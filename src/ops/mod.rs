@@ -2,9 +2,8 @@ mod collections;
 mod points;
 mod query;
 
-use collection::operations::{
-    shard_key_selector::ShardKeySelector, shard_selector_internal::ShardSelectorInternal,
-};
+use api::rest::schema::ShardKeySelector;
+use collection::operations::shard_selector_internal::ShardSelectorInternal;
 
 pub use collections::*;
 pub use points::*;

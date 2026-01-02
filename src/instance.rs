@@ -5,6 +5,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use collection::shards::channel_service::ChannelService;
+use common::budget::ResourceBudget;
+use common::cpu::get_num_cpus;
 use serde::{Deserialize, Serialize};
 use std::{mem::ManuallyDrop, sync::Arc, thread, time::Duration};
 use storage::content_manager::{
@@ -122,7 +124,9 @@ fn start_qdrant(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Han
     let settings = Settings::new(config_path).expect("Failed to load settings");
 
     memory::madvise::set_global(settings.storage.mmap_advice);
-    segment::vector_storage::common::set_async_scorer(settings.storage.async_scorer);
+    segment::vector_storage::common::set_async_scorer(
+        settings.storage.performance.async_scorer.unwrap_or(false),
+    );
 
     if let Some(recovery_warning) = &settings.storage.recovery_mode {
         warn!("Qdrant is loaded in recovery mode: {}", recovery_warning);
@@ -130,25 +134,32 @@ fn start_qdrant(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Han
     }
 
     // Saved state of the consensus. This is useless for single node mode.
+    // Args: path, first_peer, allow_recovery, recovery_snapshot_id
     let persistent_consensus_state =
-        Persistent::load_or_init(&settings.storage.storage_path, true)?;
+        Persistent::load_or_init(&settings.storage.storage_path, true, false, None)?;
 
     // Create and own search runtime out of the scope of async context to ensure correct
     // destruction of it
     let search_runtime = create_search_runtime(settings.storage.performance.max_search_threads)
-        .expect("Can't search create runtime.");
+        .expect("Can't create search runtime.");
 
     let update_runtime =
-        create_update_runtime(settings.storage.performance.max_optimization_threads)
-            .expect("Can't optimizer create runtime.");
+        create_update_runtime(settings.storage.performance.max_optimization_runtime_threads)
+            .expect("Can't create optimizer runtime.");
 
     let general_runtime =
-        create_general_purpose_runtime().expect("Can't optimizer general purpose runtime.");
+        create_general_purpose_runtime().expect("Can't create general purpose runtime.");
     let runtime_handle = general_runtime.handle().clone();
 
     // Channel service is used to manage connections between peers.
-    // It allocates required number of channels and manages proper reconnection handling. This is useless for single node mode.
-    let channel_service = ChannelService::new(6333);
+    // It allocates required number of channels and manages proper reconnection handling.
+    // This is useless for single node mode.
+    let channel_service = ChannelService::new(6333, None);
+
+    // Create optimizer resource budget based on available CPUs
+    // Args: cpu_budget, io_budget (using same value for both)
+    let num_cpus = get_num_cpus();
+    let optimizer_resource_budget = ResourceBudget::new(num_cpus, num_cpus);
 
     // Table of content manages the list of collections.
     // It is a main entry point for the storage.
@@ -157,17 +168,20 @@ fn start_qdrant(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Han
         search_runtime,
         update_runtime,
         general_runtime,
+        optimizer_resource_budget,
         channel_service.clone(),
         persistent_consensus_state.this_peer_id(),
-        None,
+        None, // No consensus in single-node mode
     );
 
     toc.clear_all_tmp_directories()?;
 
     // Here we load all stored collections.
     runtime_handle.block_on(async {
-        for collection in toc.all_collections().await {
-            debug!("Loaded collection: {}", collection);
+        use storage::rbac::Access;
+        let access = Access::full("Embedded");
+        for collection_pass in toc.all_collections(&access).await {
+            debug!("Loaded collection: {}", collection_pass.name());
         }
     });
 

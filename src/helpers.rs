@@ -1,4 +1,4 @@
-use segment::common::cpu::get_num_cpus;
+use common::cpu::get_num_cpus;
 use std::cmp::max;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};

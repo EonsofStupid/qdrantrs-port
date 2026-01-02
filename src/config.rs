@@ -12,7 +12,7 @@ const DEFAULT_CONFIG: &str = include_str!("../config/config.yaml");
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    #[validate]
+    #[validate(nested)]
     pub storage: StorageConfig,
     #[serde(default = "default_telemetry_disabled")]
     pub telemetry_disabled: bool,

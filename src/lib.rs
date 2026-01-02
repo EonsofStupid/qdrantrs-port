@@ -13,10 +13,15 @@ use storage::content_manager::toc::TableOfContent;
 use tokio::sync::{mpsc, oneshot};
 use tracing::error;
 
-pub use collection::operations::types::{
-    PointRequest, PointRequestInternal, SearchRequest, SearchRequestInternal,
-};
-pub use collection::operations::{point_ops::PointStruct, types::VectorParams};
+// Public types from api crate (REST schema)
+pub use api::rest::schema::PointStruct;
+
+// Vector params from collection
+pub use collection::operations::types::VectorParams;
+
+// Collection types
+pub use collection::operations::types::{PointRequest, SearchRequest};
+
 pub use config::Settings;
 pub use error::QdrantError;
 pub use instance::QdrantInstance;
@@ -25,9 +30,12 @@ pub use ops::*;
 pub use segment::types::{Distance, Payload, WithPayloadInterface};
 pub use storage::content_manager::errors::StorageError;
 
-//re-exports
+// Re-exports for full access
+pub use api;
 pub use collection;
+pub use common;
 pub use segment;
+pub use shard;
 pub use storage;
 
 type QdrantMsg = (QdrantRequest, QdrantResponder);

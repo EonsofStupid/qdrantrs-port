@@ -1,19 +1,20 @@
 use crate::{
-    AliasRequest, AliasResponse, ColName, CollectionRequest, CollectionResponse, PointsRequest,
-    PointsResponse, QdrantClient, QdrantError, QdrantMsg, QdrantRequest, QdrantResponse,
-    QdrantResult, QueryRequest, QueryResponse,
+    AliasRequest, AliasResponse, ColName, CollectionRequest, CollectionResponse, LocalRecord,
+    PointsRequest, PointsResponse, QdrantClient, QdrantError, QdrantMsg, QdrantRequest,
+    QdrantResponse, QdrantResult, QueryRequest, QueryResponse, LocalScoredPoint,
 };
+use api::rest::schema::{PointStruct, PointVectors, UpdateVectors};
 use collection::operations::{
     payload_ops::{DeletePayload, SetPayload},
-    point_ops::{PointStruct, PointsSelector},
+    point_ops::PointsSelector,
     types::{
         CollectionError, CollectionInfo, CountRequest, CountRequestInternal, PointGroup,
-        PointRequest, RecommendGroupsRequest, RecommendRequest, RecommendRequestBatch, Record,
+        PointRequest, RecommendGroupsRequest, RecommendRequest, RecommendRequestBatch,
         SearchGroupsRequest, SearchRequest, SearchRequestBatch, UpdateResult, VectorsConfig,
     },
-    vector_ops::{DeleteVectors, PointVectors, UpdateVectors},
+    vector_ops::DeleteVectors,
 };
-use segment::types::{Filter, ScoredPoint};
+use segment::types::Filter;
 use std::{mem::ManuallyDrop, thread};
 use storage::content_manager::collection_meta_ops::{CreateCollection, UpdateCollection};
 use tokio::sync::{
@@ -52,9 +53,11 @@ impl QdrantClient {
             hnsw_config: None,
             wal_config: None,
             optimizers_config: None,
-            init_from: None,
             quantization_config: None,
             sparse_vectors: None,
+            strict_mode_config: None,
+            uuid: None,
+            metadata: None,
         };
 
         let msg = CollectionRequest::Create((name.into(), data));
@@ -189,7 +192,7 @@ impl QdrantClient {
         &self,
         collection_name: impl Into<String>,
         data: PointRequest,
-    ) -> Result<Vec<Record>, QdrantError> {
+    ) -> Result<Vec<LocalRecord>, QdrantError> {
         let msg = PointsRequest::Get((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Get(v))) => Ok(v),
@@ -204,7 +207,13 @@ impl QdrantClient {
         collection_name: impl Into<String>,
         points: Vec<PointStruct>,
     ) -> Result<UpdateResult, QdrantError> {
-        let msg = PointsRequest::Upsert((collection_name.into(), points.into()));
+        use api::rest::schema::PointInsertOperations;
+        let ops = PointInsertOperations::PointsList(api::rest::schema::PointsList {
+            points,
+            shard_key: None,
+            update_filter: None,
+        });
+        let msg = PointsRequest::Upsert((collection_name.into(), ops));
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Upsert(v))) => Ok(v),
             Err(e) => Err(e),
@@ -254,6 +263,7 @@ impl QdrantClient {
         let data = UpdateVectors {
             points,
             shard_key: None,
+            update_filter: None,
         };
         let msg = PointsRequest::UpdateVectors((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
@@ -324,7 +334,7 @@ impl QdrantClient {
         &self,
         collection_name: impl Into<String>,
         data: SearchRequest,
-    ) -> Result<Vec<ScoredPoint>, QdrantError> {
+    ) -> Result<Vec<LocalScoredPoint>, QdrantError> {
         let msg = QueryRequest::Search((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::Search(v))) => Ok(v),
@@ -338,7 +348,7 @@ impl QdrantClient {
         &self,
         collection_name: impl Into<String>,
         data: Vec<SearchRequest>,
-    ) -> Result<Vec<Vec<ScoredPoint>>, QdrantError> {
+    ) -> Result<Vec<Vec<LocalScoredPoint>>, QdrantError> {
         let data = SearchRequestBatch { searches: data };
         let msg = QueryRequest::SearchBatch((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
@@ -367,7 +377,7 @@ impl QdrantClient {
         &self,
         collection_name: impl Into<String>,
         data: RecommendRequest,
-    ) -> Result<Vec<ScoredPoint>, QdrantError> {
+    ) -> Result<Vec<LocalScoredPoint>, QdrantError> {
         let msg = QueryRequest::Recommend((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::Recommend(v))) => Ok(v),
@@ -381,7 +391,7 @@ impl QdrantClient {
         &self,
         collection_name: impl Into<String>,
         data: Vec<RecommendRequest>,
-    ) -> Result<Vec<Vec<ScoredPoint>>, QdrantError> {
+    ) -> Result<Vec<Vec<LocalScoredPoint>>, QdrantError> {
         let data = RecommendRequestBatch { searches: data };
         let msg = QueryRequest::RecommendBatch((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {

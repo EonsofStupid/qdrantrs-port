@@ -1,38 +1,55 @@
 [package]
 name = "qdrant-lib"
-version = "0.1.4"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.89"
 license = "Apache-2.0"
 documentation = "https://docs.rs/qdrant-lib"
 repository = "https://github.com/tyrchen/qdrant-lib"
 homepage = "https://github.com/tyrchen/qdrant-lib"
 description = """
 Extract core logic from qdrant and make it available as a library.
+Aligned to Qdrant v1.16.3.
 """
 readme = "README.md"
 categories = ["API bindings"]
 keywords = ["qdrant", "vector db", "llm", "sdk"]
 
 [dependencies]
-async-trait = "0.1.74"
-collection = { version = "0.4.2", path = "./.modules/qdrant/lib/collection" }
-config = "0.13.4"
-futures = "0.3.29"
-futures-util = "0.3.29"
-memory = { version = "0.0.0", path = "./.modules/qdrant/lib/common/memory" }
-segment = { version = "0.6.0", path = "./.modules/qdrant/lib/segment" }
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = "1.0.108"
-storage = { version = "0.2.0", path = "./.modules/qdrant/lib/storage" }
-tar = "0.4.40"
-thiserror = "1.0.50"
-tokio = { version = "1.35", features = ["rt", "rt-multi-thread"] }
-tracing = "0.1.40"
-validator = "0.16.1"
+async-trait = "0.1.89"
+config = { version = "0.15", default-features = false, features = ["yaml"] }
+futures = "0.3"
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tar = "0.4"
+validator = { version = "0.20", features = ["derive"] }
+thiserror = "2.0"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync"] }
+tracing = "0.1"
+log = "0.4"
+
+# Qdrant internal crates (from submodule)
+api = { path = "./.modules/qdrant/lib/api" }
+collection = { path = "./.modules/qdrant/lib/collection" }
+common = { path = "./.modules/qdrant/lib/common/common" }
+cancel = { path = "./.modules/qdrant/lib/common/cancel" }
+io_lib = { package = "io", path = "./.modules/qdrant/lib/common/io" }
+issues = { path = "./.modules/qdrant/lib/common/issues" }
+memory = { path = "./.modules/qdrant/lib/common/memory" }
+segment = { path = "./.modules/qdrant/lib/segment", default-features = false }
+shard = { path = "./.modules/qdrant/lib/shard" }
+storage = { path = "./.modules/qdrant/lib/storage" }
 
 [dev-dependencies]
-anyhow = "1.0.75"
-llm-sdk = "0.4.0"
-tokio = { version = "1.35", features = ["rt", "rt-multi-thread", "macros"] }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-zip = "0.6.6"
+anyhow = "1.0"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Force newer versions of transitive dependencies for Rust 2024 edition compatibility
+[dependencies.time]
+version = "0.3.44"
+
+# Qdrant's fork of tar with set_sync method
+[patch.crates-io]
+tar = { git = "https://github.com/qdrant/tar-rs", branch = "main" }
