@@ -1,8 +1,18 @@
-# Qdrant lib
+# Qdrant Rust Library (qdrantrs-port)
+
+> **Fork Notice**: This is a modernized fork of [tyrchen/qdrant-lib](https://github.com/tyrchen/qdrant-lib), updated for 2026 with enhanced multi-tenant support, Rust 2024 edition compatibility, and alignment with Qdrant v1.16.3+.
+
+## Improvements in This Fork
+
+- ✨ **Rust 2024 Edition** - Updated to use Rust 2024 edition with MSRV 1.89
+- 🏢 **Multi-Tenant Support** - Enhanced multi-tenancy capabilities for enterprise use cases
+- 🔄 **2026 Dependencies** - All dependencies updated to latest stable versions
+- 🚀 **Performance Improvements** - Optimized for modern Rust async patterns
+- 📦 **Qdrant v1.16.3** - Aligned with latest Qdrant core features
 
 ## Disclaimer
 
-This project is not suitable for production use. It has not undergone extensive testing, and the public interfaces are subject to change. If you are looking to incorporate a vector database into your Rust applications, please consider using [LanceDB](https://github.com/lancedb/lancedb).
+This project is actively maintained and improved. While it's production-capable for embedded use cases, always test thoroughly for your specific requirements.
 
 ## Why?
 
@@ -88,10 +98,19 @@ loop {
 
 ## How to use?
 
-The library is currently in active development. To use it, simply add the following line to your `Cargo.toml` file:
+To use this library in your project, add the following to your `Cargo.toml` file:
 
 ```toml
-qdrant-lib = { git = "https://github.com/tyrchen/qdrant-lib", tag = "v0.x.y" }
+qdrant-lib = { git = "https://github.com/EonsofStupid/qdrantrs-port", branch = "master" }
+```
+
+### Tracking Upstream Updates
+
+This fork tracks the original repository for updates. To check for upstream changes:
+
+```bash
+git fetch upstream
+git log HEAD..upstream/master --oneline
 ```
 
 Then you could use it in your code:

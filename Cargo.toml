@@ -5,11 +5,11 @@ edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
 documentation = "https://docs.rs/qdrant-lib"
-repository = "https://github.com/tyrchen/qdrant-lib"
-homepage = "https://github.com/tyrchen/qdrant-lib"
+repository = "https://github.com/EonsofStupid/qdrantrs-port"
+homepage = "https://github.com/EonsofStupid/qdrantrs-port"
 description = """
-Extract core logic from qdrant and make it available as a library.
-Aligned to Qdrant v1.16.3.
+Modernized Qdrant library for Rust with multi-tenant support.
+Forked and updated for 2026. Aligned to Qdrant v1.16.3.
 """
 readme = "README.md"
 categories = ["API bindings"]
