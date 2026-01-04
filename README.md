@@ -1,157 +1,290 @@
-# Qdrant Rust Library (qdrantrs-port)
+# qdrant-lib
 
-> **Fork Notice**: This is a modernized fork of [tyrchen/qdrant-lib](https://github.com/tyrchen/qdrant-lib), updated for 2026 with enhanced multi-tenant support, Rust 2024 edition compatibility, and alignment with Qdrant v1.16.3+.
+**Embedded Qdrant Vector Database for Rust Applications**
 
-## Improvements in This Fork
+A modernized fork that runs Qdrant as an **in-process embedded library**, eliminating the need for a separate server. Aligned to Qdrant v1.16.3.
 
-- ✨ **Rust 2024 Edition** - Updated to use Rust 2024 edition with MSRV 1.89
-- 🏢 **Multi-Tenant Support** - Enhanced multi-tenancy capabilities for enterprise use cases
-- 🔄 **2026 Dependencies** - All dependencies updated to latest stable versions
-- 🚀 **Performance Improvements** - Optimized for modern Rust async patterns
-- 📦 **Qdrant v1.16.3** - Aligned with latest Qdrant core features
+[![Rust](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-## Disclaimer
+---
 
-This project is actively maintained and improved. While it's production-capable for embedded use cases, always test thoroughly for your specific requirements.
+## 🎯 What This Is
 
-## Why?
-
-Qdrant is a vector search engine known for its speed, scalability, and user-friendliness. While it excels in its domain, it currently lacks a library interface for direct embedding into applications. This is fine for constructing a web service geared towards semantic search, as Qdrant can be used directly. However, for desktop or mobile applications, integrating a separate service is not an ideal approach. This library has been developed to address this specific challenge.
-
-## What?
-
-Qdrant offers both GRPC and RESTful APIs. This library is designed to mirror the functionality of Qdrant's RESTful APIs. As it is intended for embedding within applications, it supports only the following core APIs:
-
-- [x] collections & aliases
-- [x] points
-- [x] search
-- [x] recommend
-- [ ] snapshot
-
-However, the following service/cluster-related APIs will not be included in the supported features:
-
-- cluster
-- discovery
-- shard
-
-## How?
-
-Qdrant's core architecture comprises components such as collection, memory, segment, and storage. The primary data structure we need to initialize is `TableOfContent`. Once we establish a method to create this structure, our next step is to integrate its functionality with the public-facing client APIs. However, since `TableOfContent` initiates multiple Tokio runtimes for indexing and searching, it cannot be operated directly under a standard `#[tokio::main]` application. To resolve this, we instantiate `TableOfContent` in a dedicated thread and facilitate communication through Tokio mpsc channels. All public-facing APIs function by internally dispatching messages to the dedicated thread and then awaiting the response.
-
-![arch](docs/images/arch.jpg)
-
-Users can initiate a Qdrant instance in the following manner:
+| Standard Qdrant | This Library (qdrant-lib) |
+|-----------------|---------------------------|
+| Separate server process | **Embedded in your app** |
+| gRPC/REST communication | **Direct function calls** |
+| Network latency | **Zero network overhead** |
+| Manage server lifecycle | **Automatic lifecycle** |
 
 ```rust
+// Start embedded Qdrant with one line
 let client = QdrantInstance::start(None)?;
+
+// Use it directly - no network, no gRPC
+client.create_collection("my_vectors", vectors_config).await?;
+client.upsert_points("my_vectors", points).await?;
+let results = client.search_points("my_vectors", search_request).await?;
 ```
 
-This process results in the creation of an `Arc<QdrantClient>`, which is based on the following data structure:
+---
+
+## 📁 Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Your Application                         │
+├─────────────────────────────────────────────────────────────────┤
+│                          QdrantClient                            │
+│                    (mpsc channel sender)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                         qdrant thread                            │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    QdrantInstance                        │    │
+│  │  ┌─────────────────┬─────────────────┬────────────────┐ │    │
+│  │  │  Search Runtime │ Update Runtime  │ General Runtime│ │    │
+│  │  │  (N-1 threads)  │ (optimizers)    │ (I/O + misc)   │ │    │
+│  │  └─────────────────┴─────────────────┴────────────────┘ │    │
+│  │                         ↓                                │    │
+│  │              TableOfContent (ToC)                        │    │
+│  │         ┌──────────┬──────────┬──────────┐              │    │
+│  │         │Collection│Collection│Collection│              │    │
+│  │         └──────────┴──────────┴──────────┘              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🗂️ Source File Map
+
+### Core Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/lib.rs` | 80 | Entry point, exports `QdrantClient`, `QdrantInstance`, `Settings` |
+| `src/instance.rs` | 190 | **Tokio runtime setup**, spawns qdrant thread, message loop |
+| `src/client.rs` | 430 | **30+ API methods** for collections, points, search, payloads |
+| `src/config.rs` | 78 | YAML configuration loading via `config` crate |
+| `src/helpers.rs` | 69 | Runtime builders (search, update, general) |
+| `src/error.rs` | 15 | Error types wrapping `CollectionError`, `StorageError` |
+| `src/snapshots.rs` | 143 | Snapshot recovery (currently unused) |
+
+### Operations Module (`src/ops/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `mod.rs` | 20 | Exports + shard selector helper |
+| `collections.rs` | 243 | Collection/Alias CRUD with RBAC |
+| `points.rs` | ~600 | Point operations (upsert, delete, update vectors) |
+| `query.rs` | ~300 | Search, recommend, scroll operations |
+
+---
+
+## 🔧 Custom Code Sections
+
+### 1. **Three-Runtime Tokio Architecture** (`helpers.rs`)
 
 ```rust
-#[derive(Debug)]
-pub struct QdrantClient {
-    tx: ManuallyDrop<mpsc::Sender<QdrantMsg>>,
-    terminated_rx: oneshot::Receiver<()>,
-    #[allow(dead_code)]
-    handle: JoinHandle<Result<(), QdrantError>>,
+// Search Runtime: CPU-bound, (N-1) threads
+create_search_runtime(max_search_threads)
+
+// Update Runtime: Optimizers, configurable threads
+create_update_runtime(max_optimization_threads)
+
+// General Runtime: I/O + async tasks
+create_general_purpose_runtime()
+```
+
+> **Why 3 Runtimes?** Prevents search latency spikes during heavy indexing.
+
+### 2. **Message-Passing Architecture** (`instance.rs`, `client.rs`)
+
+```rust
+// Client sends requests via mpsc channel
+let (tx, rx) = mpsc::channel::<QdrantMsg>(1024);
+
+// Qdrant thread receives and dispatches
+while let Some((msg, resp_sender)) = rx.recv().await {
+    tokio::spawn(async move {
+        let res = msg.handle(&toc).await;
+        resp_sender.send(res);
+    });
 }
 ```
 
-It's crucial to ensure that when the `QdrantClient` is disposed of, the `TableOfContent` is also appropriately dropped before the main thread terminates. To achieve this, we have implemented the Drop trait for `QdrantClient`:
+> **Clean shutdown**: Dropping `QdrantClient` closes channel → thread exits → ToC cleanup.
+
+### 3. **Direct Storage Access** (`ops/*.rs`)
+
+No gRPC serialization. Direct calls to Qdrant internal crates:
+```rust
+// Direct TableOfContent access
+toc.perform_collection_meta_op(op).await?;
+collection.info(&shard).await?;
+```
+
+### 4. **Multi-Tenant Support** (`ops/collections.rs`)
 
 ```rust
-impl Drop for QdrantClient {
-    fn drop(&mut self) {
-        // drop the tx channel to terminate the qdrant thread
-        unsafe {
-            ManuallyDrop::drop(&mut self.tx);
-        }
-        while let Err(TryRecvError::Empty) = self.terminated_rx.try_recv() {
-            warn!("Waiting for qdrant to terminate");
-            thread::sleep(std::time::Duration::from_millis(100));
-        }
-    }
-}
+CollectionRequest::GetWithShard((name, shard_key))
+// → ShardSelectorInternal for tenant isolation
 ```
 
-This approach is designed to pause until a termination message is received from the thread maintaining the `TableOfContent`:
+---
 
-```rust
-loop {
-    match Arc::try_unwrap(toc_arc) {
-        Ok(toc) => {
-            drop(toc);
-            if let Err(e) = terminated_tx.send(()) {
-                warn!("Failed to send termination signal: {:?}", e);
-            }
-            break;
-        }
-        Err(toc) => {
-            toc_arc = toc;
-            warn!("Waiting for ToC to be gracefully dropped");
-            thread::sleep(Duration::from_millis(300));
-        }
-    }
-}
+## ⚙️ Configuration
+
+### Default Config (`config/config.yaml`)
+
+```yaml
+storage:
+  storage_path: ./.storage
+  snapshots_path: ./.snapshots
+  on_disk_payload: true          # RAM optimization
+  
+  performance:
+    max_search_threads: 0        # auto = CPU-1
+    max_optimization_threads: 1
+    
+  hnsw_index:
+    m: 16                        # graph connectivity
+    ef_construct: 100            # build-time neighbors
+    on_disk: false               # RAM for speed
+
+telemetry_disabled: false
 ```
 
-## How to use?
-
-To use this library in your project, add the following to your `Cargo.toml` file:
-
-```toml
-qdrant-lib = { git = "https://github.com/EonsofStupid/qdrantrs-port", branch = "master" }
-```
-
-### Tracking Upstream Updates
-
-This fork tracks the original repository for updates. To check for upstream changes:
+### Environment Override
 
 ```bash
-git fetch upstream
-git log HEAD..upstream/master --oneline
+export QDRANT__STORAGE__STORAGE_PATH=/custom/path
+export QDRANT__STORAGE__ON_DISK_PAYLOAD=false
 ```
 
-Then you could use it in your code:
+---
+
+## 🛡️ Hardening Recommendations
+
+### High Priority
+
+| Issue | Current State | Recommendation |
+|-------|---------------|----------------|
+| **Panic on unexpected response** | `panic!("Unexpected response")` in client.rs | Return `Err(QdrantError::UnexpectedResponse)` |
+| **No request timeout** | Unbounded channel waits | Add `tokio::time::timeout` wrapper |
+| **Error context** | Basic error types | Add `anyhow` context or custom Display |
+| **Graceful shutdown** | Spin-wait loop | Use `tokio::select!` with timeout |
+
+### Medium Priority
+
+| Issue | Recommendation |
+|-------|----------------|
+| **No metrics** | Add `prometheus` or `metrics` crate for observability |
+| **No health check** | Expose `is_healthy()` method checking ToC state |
+| **Channel backpressure** | Add bounded channel with timeout on send |
+| **Memory limits** | Expose memory usage tracking from storage crate |
+
+### Low Priority (Nice to Have)
+
+| Feature | Notes |
+|---------|-------|
+| **Connection pooling** | Not needed (embedded), but useful for future multi-instance |
+| **Request tracing** | Add `tracing::instrument` to client methods |
+| **Snapshot to S3** | Extend `snapshots.rs` for cloud backup |
+
+---
+
+## 📊 API Coverage
+
+### ✅ Implemented
+
+**Collections**: create, list, get, update, delete  
+**Aliases**: create, list, get, delete, rename  
+**Points**: upsert, get, delete, count, update_vectors, delete_vectors  
+**Payloads**: set, delete, clear  
+**Search**: search, search_batch, search_group_by  
+**Recommend**: recommend, recommend_batch, recommend_group_by  
+
+### ❌ Not Yet Implemented
+
+- **Scroll with offset** (partial - no pagination cursor)
+- **Query API** (new universal query endpoint)
+- **Cluster operations** (N/A for embedded)
+- **Web Dashboard** (🎯 next milestone)
+
+---
+
+## 🚀 Next Milestones
+
+### 1. Web Dashboard Integration
+
+Port Qdrant's web UI to work with embedded mode:
+```rust
+// Proposed API
+let client = QdrantInstance::start(None)?;
+let dashboard = client.start_dashboard(8080)?; // Serves UI at localhost:8080
+```
+
+### 2. Enhanced Error Handling
+
+Replace panics with proper error types:
+```rust
+#[derive(Error, Debug)]
+pub enum QdrantError {
+    #[error("Collection error: {0}")]
+    Collection(#[from] CollectionError),
+    #[error("Unexpected response type")]
+    UnexpectedResponse,
+    #[error("Request timeout")]
+    Timeout,
+}
+```
+
+### 3. Observability
 
 ```rust
-let client = QdrantInstance::start(None)?;
-let collection_name = "test_collection2";
-match client
-    .create_collection(collection_name, Default::default())
-    .await
-{
-    Ok(v) => println!("Collection created: {:?}", v),
-    Err(QdrantError::Storage(StorageError::BadInput { description })) => {
-        println!("{description}");
-    }
-    Err(e) => panic!("Unexpected error: {:?}", e),
-}
+// Metrics endpoint
+client.metrics() -> PrometheusMetrics
 
-let collections = client.list_collections().await?;
-println!("Collections: {:?}", collections);
+// Health check
+client.health_check() -> HealthStatus
 ```
 
-For more detailed usage, refer to the [examples](./examples/) folder. It includes a straightforward example demonstrating how to index a Wikipedia dataset and perform searches on it.
+---
 
-## Future plan
+## 🔗 Dependencies
 
-- [ ] Provide a set of high-level APIs for common use cases
-- [ ] Better documentation for the public APIs
-- [ ] Add unit/integration tests
-- [ ] Add performance benchmarks
-- [ ] Add python bindings
-- [ ] Add nodejs bindings
+This library uses Qdrant's internal crates via git submodule:
 
-## Caveats
+```
+.modules/qdrant/lib/
+├── api/
+├── collection/
+├── common/
+├── segment/
+├── shard/
+└── storage/
+```
 
-Currently, the library employs a modified version of the original Qdrant code. As a standalone library, minimizing unnecessary dependencies is crucial. However, the original Qdrant codebase includes several dependencies that are redundant for the library's purposes. For instance, the `collection` crate depends on `actix-web-validator`, which in turn introduces the entire `actix` ecosystem into the library. To circumvent this, we've eliminated the `actix-web-validator` dependency, opting instead to integrate the pertinent code directly into the collection crate ([code](https://github.com/tyrchen/qdrant/commit/9369c87d0743f2122d3129d4091ef0b9c29a1375)). While this is not an ideal solution, we plan to explore more optimal alternatives in the future.
+**Update Qdrant version:**
+```bash
+cd .modules/qdrant
+git fetch origin
+git checkout v1.17.0  # or desired version
+cd ../..
+cargo build
+```
 
-Furthermore, we intend to remove certain dependencies, notably `axum` within the `api` crate, which was originally introduced by the `tonic` transport feature.
+---
 
-Update: Upon further review, we found that disabling the transport feature of `tonic` renders the `api` crate non-compilable. Additionally, crates like `collection` / `storage` are heavily dependent on the `api` crate. Therefore, we need to retain this feature for the time being.
+## 📜 License
 
-## License
+Apache 2.0 - Same as upstream Qdrant.
 
-For information regarding the licensing, please refer to the [Qdrant License](https://github.com/qdrant/qdrant/blob/master/LICENSE) available on their GitHub repo. As of the current date, it is under the Apache 2.0 License.
+---
+
+## 🙏 Credits
+
+- [Qdrant Team](https://qdrant.tech/) - Original vector database
+- This fork maintained by [@EonsofStupid](https://github.com/EonsofStupid)

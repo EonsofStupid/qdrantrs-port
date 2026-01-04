@@ -15,28 +15,76 @@ use collection::operations::{
     vector_ops::DeleteVectors,
 };
 use segment::types::Filter;
-use std::{mem::ManuallyDrop, thread};
+use std::{mem::ManuallyDrop, thread, time::{Duration, Instant}};
 use storage::content_manager::collection_meta_ops::{CreateCollection, UpdateCollection};
 use tokio::sync::{
     mpsc,
     oneshot::{self, error::TryRecvError},
 };
-use tracing::warn;
+use tracing::{info, warn};
+
+/// Maximum time to wait for graceful shutdown
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Drop for QdrantClient {
     fn drop(&mut self) {
-        // drop the tx channel to terminate the qdrant thread
+        // Drop the tx channel to signal the qdrant thread to terminate
         unsafe {
             ManuallyDrop::drop(&mut self.tx);
         }
-        while let Err(TryRecvError::Empty) = self.terminated_rx.try_recv() {
-            warn!("Waiting for qdrant to terminate");
-            thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Wait for graceful shutdown with timeout
+        let start = Instant::now();
+        loop {
+            match self.terminated_rx.try_recv() {
+                Ok(()) => {
+                    info!("Qdrant instance terminated gracefully");
+                    break;
+                }
+                Err(TryRecvError::Empty) => {
+                    if start.elapsed() > SHUTDOWN_TIMEOUT {
+                        warn!("Qdrant shutdown timeout after {:?}, forcing termination", SHUTDOWN_TIMEOUT);
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(TryRecvError::Closed) => {
+                    // Channel closed means thread already exited
+                    break;
+                }
+            }
         }
     }
 }
 
 impl QdrantClient {
+    /// Check if the Qdrant instance is healthy and accepting requests.
+    /// 
+    /// This is a quick synchronous check that verifies the channel is open.
+    /// For a full async health check that verifies the instance responds, use `health_check_async`.
+    pub fn is_healthy(&self) -> bool {
+        !self.tx.is_closed()
+    }
+
+    /// Async health check that verifies the Qdrant instance is responding.
+    /// 
+    /// Attempts to list collections with a short timeout to verify the instance
+    /// is operational.
+    pub async fn health_check(&self) -> Result<(), QdrantError> {
+        // Use a short timeout for health checks
+        let timeout = Duration::from_secs(5);
+        let (tx, rx) = oneshot::channel::<QdrantResult>();
+        let msg = CollectionRequest::List.into();
+        
+        self.tx.send((msg, tx)).await.map_err(|_| QdrantError::ChannelClosed)?;
+        
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(_)) => Err(QdrantError::ChannelClosed),
+            Err(_) => Err(QdrantError::Timeout(timeout)),
+        }
+    }
+
     /// Create a new collection.
     pub async fn create_collection(
         &self,
@@ -65,7 +113,7 @@ impl QdrantClient {
             Ok(QdrantResponse::Collection(CollectionResponse::Create(v))) => Ok(v),
 
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -74,7 +122,7 @@ impl QdrantClient {
         match send_request(&self.tx, CollectionRequest::List.into()).await {
             Ok(QdrantResponse::Collection(CollectionResponse::List(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -87,7 +135,7 @@ impl QdrantClient {
             Ok(QdrantResponse::Collection(CollectionResponse::Get(v))) => Ok(Some(v)),
             Err(QdrantError::Collection(CollectionError::NotFound { .. })) => Ok(None),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -101,7 +149,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Collection(CollectionResponse::Update(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -110,7 +158,7 @@ impl QdrantClient {
         match send_request(&self.tx, CollectionRequest::Delete(name.into()).into()).await {
             Ok(QdrantResponse::Collection(CollectionResponse::Delete(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -124,7 +172,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Alias(AliasResponse::Create(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -140,7 +188,7 @@ impl QdrantClient {
                 Ok(res)
             }
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -159,7 +207,7 @@ impl QdrantClient {
                 Ok(res)
             }
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -169,7 +217,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Alias(AliasResponse::Delete(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -183,7 +231,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Alias(AliasResponse::Rename(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -197,7 +245,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Get(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -217,7 +265,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Upsert(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -231,7 +279,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Delete(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -250,7 +298,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::Count(v))) => Ok(v.count),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -269,7 +317,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::UpdateVectors(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -283,7 +331,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::DeleteVectors(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -297,7 +345,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::SetPayload(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -311,7 +359,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::DeletePayload(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -325,7 +373,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Points(PointsResponse::ClearPayload(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -339,7 +387,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::Search(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -354,7 +402,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::SearchBatch(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -368,7 +416,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::SearchGroup(v))) => Ok(v.groups),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -382,7 +430,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::Recommend(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -397,7 +445,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::RecommendBatch(v))) => Ok(v),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 
@@ -411,7 +459,7 @@ impl QdrantClient {
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::RecommendGroup(v))) => Ok(v.groups),
             Err(e) => Err(e),
-            res => panic!("Unexpected response: {:?}", res),
+            res => Err(QdrantError::unexpected("expected response", res)),
         }
     }
 }
@@ -420,10 +468,25 @@ async fn send_request(
     sender: &mpsc::Sender<QdrantMsg>,
     msg: QdrantRequest,
 ) -> Result<QdrantResponse, QdrantError> {
-    let (tx, rx) = oneshot::channel::<QdrantResult>();
-    if let Err(e) = sender.send((msg, tx)).await {
-        warn!("Failed to send request: {:?}", e);
-    }
-    let ret = rx.await?;
-    Ok::<_, QdrantError>(ret?)
+    send_request_with_timeout(sender, msg, std::time::Duration::from_secs(30)).await
 }
+
+/// Send a request with a configurable timeout
+async fn send_request_with_timeout(
+    sender: &mpsc::Sender<QdrantMsg>,
+    msg: QdrantRequest,
+    timeout: std::time::Duration,
+) -> Result<QdrantResponse, QdrantError> {
+    let (tx, rx) = oneshot::channel::<QdrantResult>();
+    
+    // Send request, return ChannelClosed if instance is shutting down
+    sender.send((msg, tx)).await.map_err(|_| QdrantError::ChannelClosed)?;
+    
+    // Wait for response with timeout
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(result)) => Ok(result?),
+        Ok(Err(_)) => Err(QdrantError::ChannelClosed), // Response channel closed
+        Err(_) => Err(QdrantError::Timeout(timeout)),
+    }
+}
+
