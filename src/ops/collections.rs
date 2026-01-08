@@ -13,7 +13,7 @@ use storage::content_manager::{
     errors::StorageError,
     toc::TableOfContent,
 };
-use storage::rbac::Access;
+use storage::rbac::{Access, AccessRequirements};
 
 #[derive(Debug, Clone, Deserialize)]
 pub enum CollectionRequest {
@@ -29,6 +29,8 @@ pub enum CollectionRequest {
     Update((ColName, UpdateCollection)),
     /// delete collection with given name
     Delete(ColName),
+    /// check if collection exists
+    Exists(ColName),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +59,8 @@ pub enum CollectionResponse {
     Update(bool),
     /// deletion status
     Delete(bool),
+    /// exists status
+    Exists(bool),
 }
 
 #[derive(Debug, Serialize)]
@@ -119,6 +123,13 @@ impl Handler for CollectionRequest {
                     CollectionMetaOperations::DeleteCollection(DeleteCollectionOperation(name));
                 let ret = toc.perform_collection_meta_op(op).await?;
                 Ok(CollectionResponse::Delete(ret))
+            }
+            CollectionRequest::Exists(name) => {
+                let exists = match access.check_collection_access(&name, AccessRequirements::new()) {
+                    Ok(pass) => toc.get_collection(&pass).await.is_ok(),
+                    Err(_) => false,
+                };
+                Ok(CollectionResponse::Exists(exists))
             }
         }
     }

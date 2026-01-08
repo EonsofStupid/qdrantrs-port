@@ -2,6 +2,7 @@ use crate::{
     AliasRequest, AliasResponse, ColName, CollectionRequest, CollectionResponse, LocalRecord,
     PointsRequest, PointsResponse, QdrantClient, QdrantError, QdrantMsg, QdrantRequest,
     QdrantResponse, QdrantResult, QueryRequest, QueryResponse, LocalScoredPoint,
+    QueryPointsRequest,
 };
 use api::rest::schema::{PointStruct, PointVectors, UpdateVectors};
 use collection::operations::{
@@ -162,6 +163,15 @@ impl QdrantClient {
         }
     }
 
+    /// Check if collection exists.
+    pub async fn collection_exists(&self, name: impl Into<String>) -> Result<bool, QdrantError> {
+        match send_request(&self.tx, CollectionRequest::Exists(name.into()).into()).await {
+            Ok(QdrantResponse::Collection(CollectionResponse::Exists(v))) => Ok(v),
+            Err(e) => Err(e),
+            res => Err(QdrantError::unexpected("expected response", res)),
+        }
+    }
+
     /// Create alias for collection.
     pub async fn create_alias(
         &self,
@@ -246,6 +256,22 @@ impl QdrantClient {
             Ok(QdrantResponse::Points(PointsResponse::Get(v))) => Ok(v),
             Err(e) => Err(e),
             res => Err(QdrantError::unexpected("expected response", res)),
+        }
+    }
+
+    /// Scroll through points in a collection with pagination.
+    ///
+    /// Returns points matching optional filter, with pagination support via offset.
+    pub async fn scroll_points(
+        &self,
+        collection_name: impl Into<String>,
+        request: collection::operations::types::ScrollRequest,
+    ) -> Result<collection::operations::types::ScrollResult, QdrantError> {
+        let msg = PointsRequest::Scroll((collection_name.into(), request));
+        match send_request(&self.tx, msg.into()).await {
+            Ok(QdrantResponse::Points(PointsResponse::Scroll(result))) => Ok(result),
+            Err(e) => Err(e),
+            res => Err(QdrantError::unexpected("expected Scroll response", res)),
         }
     }
 
@@ -415,6 +441,20 @@ impl QdrantClient {
         let msg = QueryRequest::SearchGroup((collection_name.into(), data));
         match send_request(&self.tx, msg.into()).await {
             Ok(QdrantResponse::Query(QueryResponse::SearchGroup(v))) => Ok(v.groups),
+            Err(e) => Err(e),
+            res => Err(QdrantError::unexpected("expected response", res)),
+        }
+    }
+
+    /// universal query points
+    pub async fn query_points(
+        &self,
+        collection_name: impl Into<String>,
+        data: QueryPointsRequest,
+    ) -> Result<Vec<LocalScoredPoint>, QdrantError> {
+        let msg = QueryRequest::Query((collection_name.into(), data));
+        match send_request(&self.tx, msg.into()).await {
+            Ok(QdrantResponse::Query(QueryResponse::Query(v))) => Ok(v),
             Err(e) => Err(e),
             res => Err(QdrantError::unexpected("expected response", res)),
         }

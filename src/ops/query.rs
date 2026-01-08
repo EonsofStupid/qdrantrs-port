@@ -14,8 +14,20 @@ use collection::{
             RecommendRequest, RecommendRequestBatch, SearchGroupsRequest, SearchRequest,
             SearchRequestBatch,
         },
+
+        universal_query::collection_query::{
+            CollectionPrefetch, CollectionQueryRequest, Mmr, NearestWithMmr, Query,
+            VectorInputInternal, VectorQuery,
+        },
+        universal_query::formula::FormulaInternal,
+        universal_query::shard_query::{FusionInternal, SampleInternal},
     },
 };
+use api::rest::schema as rest;
+use ordered_float::OrderedFloat;
+use segment::data_types::order_by::OrderBy;
+use segment::data_types::vectors::{DEFAULT_VECTOR_NAME, MultiDenseVectorInternal, VectorInternal};
+use segment::vector_storage::query::{ContextPair, ContextQuery, DiscoveryQuery, RecoQuery};
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use serde::{Deserialize, Serialize};
 use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
@@ -56,6 +68,8 @@ pub enum QueryRequest {
     RecommendBatch((ColName, RecommendRequestBatch)),
     /// recommend group by
     RecommendGroup((ColName, RecommendGroupsRequest)),
+    /// universal query
+    Query((ColName, rest::QueryRequest)),
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +86,8 @@ pub enum QueryResponse {
     RecommendBatch(Vec<Vec<LocalScoredPoint>>),
     /// recommend group by result
     RecommendGroup(GroupsResult),
+    /// universal query result
+    Query(Vec<LocalScoredPoint>),
 }
 
 #[async_trait]
@@ -217,8 +233,226 @@ impl Handler for QueryRequest {
                 .await?;
                 Ok(QueryResponse::RecommendGroup(res))
             }
+            QueryRequest::Query((collection_name, request)) => {
+                let shard = shard_selector(request.shard_key.clone());
+                
+                let collection_query_request = convert_query_request_from_rest(request.internal)?;
+
+                let requests = vec![(collection_query_request, shard)];
+                let res = toc
+                    .query_batch(
+                        &collection_name,
+                        requests,
+                        None, // read_consistency
+                        access,
+                        None, // timeout
+                        hw_acc,
+                    )
+                    .await?;
+                
+                let points = res.into_iter().next().unwrap_or_default();
+                Ok(QueryResponse::Query(
+                    points.into_iter().map(Into::into).collect(),
+                ))
+            }
         }
     }
+}
+
+fn convert_query_request_from_rest(
+    request: rest::QueryRequestInternal,
+) -> Result<CollectionQueryRequest, StorageError> {
+    let rest::QueryRequestInternal {
+        prefetch,
+        query,
+        using,
+        filter,
+        score_threshold,
+        params,
+        limit,
+        offset,
+        with_vector,
+        with_payload,
+        lookup_from,
+    } = request;
+
+    let prefetch = prefetch
+        .map(|prefetches| {
+            prefetches
+                .into_iter()
+                .map(convert_prefetch)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    let query = query
+        .map(convert_query)
+        .transpose()?;
+
+    Ok(CollectionQueryRequest {
+        prefetch,
+        query,
+        using: using.unwrap_or_else(|| DEFAULT_VECTOR_NAME.to_owned()),
+        filter,
+        score_threshold,
+        limit: limit.unwrap_or(CollectionQueryRequest::DEFAULT_LIMIT),
+        offset: offset.unwrap_or(CollectionQueryRequest::DEFAULT_OFFSET),
+        params,
+        with_vector: with_vector.unwrap_or(CollectionQueryRequest::DEFAULT_WITH_VECTOR),
+        with_payload: with_payload.unwrap_or(CollectionQueryRequest::DEFAULT_WITH_PAYLOAD),
+        lookup_from,
+    })
+}
+
+fn convert_prefetch(
+    prefetch: rest::Prefetch,
+) -> Result<CollectionPrefetch, StorageError> {
+    let rest::Prefetch {
+        prefetch,
+        query,
+        using,
+        filter,
+        score_threshold,
+        params,
+        limit,
+        lookup_from,
+    } = prefetch;
+
+    let query = query
+        .map(convert_query)
+        .transpose()?;
+    let nested_prefetches = prefetch
+        .map(|prefetches| {
+            prefetches
+                .into_iter()
+                .map(convert_prefetch)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(CollectionPrefetch {
+        prefetch: nested_prefetches,
+        query,
+        using: using.unwrap_or_else(|| DEFAULT_VECTOR_NAME.to_owned()),
+        filter,
+        score_threshold: score_threshold.map(OrderedFloat),
+        limit: limit.unwrap_or(CollectionQueryRequest::DEFAULT_LIMIT),
+        params,
+        lookup_from,
+    })
+}
+
+fn convert_query(
+    query: rest::QueryInterface,
+) -> Result<Query, StorageError> {
+    let query = rest::Query::from(query);
+    match query {
+        rest::Query::Nearest(rest::NearestQuery { nearest, mmr }) => {
+            let vector = convert_vector_input(nearest)?;
+
+            if let Some(mmr) = mmr {
+                let mmr = Mmr {
+                    diversity: mmr.diversity,
+                    candidates_limit: mmr.candidates_limit,
+                };
+                Ok(Query::Vector(VectorQuery::NearestWithMmr(NearestWithMmr {
+                    nearest: vector,
+                    mmr,
+                })))
+            } else {
+                Ok(Query::Vector(VectorQuery::Nearest(vector)))
+            }
+        }
+        rest::Query::Recommend(recommend) => {
+            let rest::RecommendInput {
+                positive,
+                negative,
+                strategy,
+            } = recommend.recommend;
+            let positives = positive
+                .into_iter()
+                .flatten()
+                .map(convert_vector_input)
+                .collect::<Result<Vec<_>, _>>()?;
+            let negatives = negative
+                .into_iter()
+                .flatten()
+                .map(convert_vector_input)
+                .collect::<Result<Vec<_>, _>>()?;
+            let reco_query = RecoQuery::new(positives, negatives);
+            match strategy.unwrap_or_default() {
+                rest::RecommendStrategy::AverageVector => Ok(Query::Vector(
+                    VectorQuery::RecommendAverageVector(reco_query),
+                )),
+                rest::RecommendStrategy::BestScore => {
+                    Ok(Query::Vector(VectorQuery::RecommendBestScore(reco_query)))
+                }
+                rest::RecommendStrategy::SumScores => {
+                    Ok(Query::Vector(VectorQuery::RecommendSumScores(reco_query)))
+                }
+            }
+        }
+        rest::Query::Discover(discover) => {
+            let rest::DiscoverInput { target, context } = discover.discover;
+            let target = convert_vector_input(target)?;
+            let context = context
+                .into_iter()
+                .flatten()
+                .map(context_pair_from_rest)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Query::Vector(VectorQuery::Discover(DiscoveryQuery::new(
+                target, context,
+            ))))
+        }
+        rest::Query::Context(context) => {
+            let rest::ContextInput(context) = context.context;
+            let context = context
+                .into_iter()
+                .flatten()
+                .map(context_pair_from_rest)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Query::Vector(VectorQuery::Context(ContextQuery::new(
+                context,
+            ))))
+        }
+        rest::Query::OrderBy(order_by) => Ok(Query::OrderBy(OrderBy::from(order_by.order_by))),
+        rest::Query::Fusion(fusion) => Ok(Query::Fusion(FusionInternal::from(fusion.fusion))),
+        rest::Query::Rrf(rrf) => Ok(Query::Fusion(FusionInternal::from(rrf.rrf))),
+        rest::Query::Formula(formula) => Ok(Query::Formula(FormulaInternal::from(formula))),
+        rest::Query::Sample(sample) => Ok(Query::Sample(SampleInternal::from(sample.sample))),
+    }
+}
+
+fn convert_vector_input(
+    vector: rest::VectorInput,
+) -> Result<VectorInputInternal, StorageError> {
+    match vector {
+        rest::VectorInput::Id(id) => Ok(VectorInputInternal::Id(id)),
+        rest::VectorInput::DenseVector(dense) => {
+            Ok(VectorInputInternal::Vector(VectorInternal::Dense(dense)))
+        }
+        rest::VectorInput::SparseVector(sparse) => {
+            Ok(VectorInputInternal::Vector(VectorInternal::Sparse(sparse)))
+        }
+        rest::VectorInput::MultiDenseVector(multi_dense) => Ok(VectorInputInternal::Vector(
+            VectorInternal::MultiDense(MultiDenseVectorInternal::new_unchecked(multi_dense)),
+        )),
+        rest::VectorInput::Document(_) | rest::VectorInput::Image(_) | rest::VectorInput::Object(_) => {
+            Err(StorageError::bad_request("Inference (Document/Image/Object) not supported in embedded mode"))
+        }
+    }
+}
+
+fn context_pair_from_rest(
+    value: rest::ContextPair,
+) -> Result<ContextPair<VectorInputInternal>, StorageError> {
+    let rest::ContextPair { positive, negative } = value;
+    Ok(ContextPair {
+        positive: convert_vector_input(positive)?,
+        negative: convert_vector_input(negative)?,
+    })
 }
 
 impl From<QueryRequest> for QdrantRequest {

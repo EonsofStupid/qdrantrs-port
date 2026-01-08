@@ -3528,6 +3528,7 @@ dependencies = [
  "issues",
  "log",
  "memory",
+ "ordered-float 5.1.0",
  "segment",
  "serde",
  "serde_json",

@@ -20,7 +20,10 @@ pub use api::rest::schema::PointStruct;
 pub use collection::operations::types::VectorParams;
 
 // Collection types
-pub use collection::operations::types::{PointRequest, SearchRequest};
+pub use collection::operations::types::{PointRequest, ScrollRequest, ScrollResult, SearchRequest};
+pub use api::rest::schema::QueryRequest as CollectionQueryRequest; // Alias it for compatibility or clarity? Or just QueryRequestAPI?
+// Actually client.rs uses it. Let's just use QueryRequest from api.
+pub use api::rest::schema::QueryRequest as QueryPointsRequest;
 
 pub use config::Settings;
 pub use error::QdrantError;

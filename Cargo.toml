@@ -40,6 +40,7 @@ memory = { path = "./.modules/qdrant/lib/common/memory" }
 segment = { path = "./.modules/qdrant/lib/segment", default-features = false }
 shard = { path = "./.modules/qdrant/lib/shard" }
 storage = { path = "./.modules/qdrant/lib/storage" }
+ordered-float = "5.1.0"
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use collection::operations::{
     point_ops::{FilterSelector, PointIdsList, PointsSelector, WriteOrdering},
     shard_selector_internal::ShardSelectorInternal,
-    types::{CountRequest, CountResult, PointRequest, UpdateResult},
+    types::{CountRequest, CountResult, PointRequest, ScrollRequest, ScrollResult, UpdateResult},
     vector_ops::DeleteVectors,
 };
 use common::counter::hardware_accumulator::HwMeasurementAcc;
@@ -48,6 +48,8 @@ pub enum PointsRequest {
     DeletePayload((ColName, DeletePayload)),
     /// clear point payload
     ClearPayload((ColName, PointsSelector)),
+    /// scroll points in collection
+    Scroll((ColName, ScrollRequest)),
 }
 
 /// Local record type for serialization
@@ -80,6 +82,8 @@ pub enum PointsResponse {
     DeletePayload(UpdateResult),
     /// clear payload status
     ClearPayload(UpdateResult),
+    /// scroll points result
+    Scroll(ScrollResult),
 }
 
 #[async_trait]
@@ -237,6 +241,27 @@ impl Handler for PointsRequest {
                 )
                 .await?;
                 Ok(PointsResponse::ClearPayload(ret))
+            }
+            PointsRequest::Scroll((col_name, request)) => {
+                let ScrollRequest {
+                    scroll_request,
+                    shard_key,
+                } = request;
+
+                let shard = shard_selector(shard_key);
+                let ret = toc
+                    .scroll(
+                        &col_name,
+                        scroll_request,
+                        None, // read_consistency
+                        None, // timeout
+                        shard,
+                        access,
+                        hw_acc,
+                    )
+                    .await?;
+
+                Ok(PointsResponse::Scroll(ret))
             }
         }
     }
