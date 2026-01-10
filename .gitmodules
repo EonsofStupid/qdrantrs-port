@@ -1,3 +1,3 @@
-[submodule ".modules/qdrant"]
-	path = .modules/qdrant
-	url = https://github.com/tyrchen/qdrant
+[submodule ".modules/rro"]
+	path = .modules/rro
+	url = https://github.com/tyrchen/rro

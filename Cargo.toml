@@ -1,19 +1,19 @@
 [package]
-name = "qdrant-lib"
+name = "rro-lib"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
-documentation = "https://docs.rs/qdrant-lib"
-repository = "https://github.com/EonsofStupid/qdrantrs-port"
-homepage = "https://github.com/EonsofStupid/qdrantrs-port"
+documentation = "https://docs.rs/rro-lib"
+repository = "https://github.com/EonsofStupid/rrors-port"
+homepage = "https://github.com/EonsofStupid/rrors-port"
 description = """
-Modernized Qdrant library for Rust with multi-tenant support.
-Forked and updated for 2026. Aligned to Qdrant v1.16.3.
+Modernized RRO library for Rust with multi-tenant support.
+Forked and updated for 2026. Aligned to RRO v1.16.3.
 """
 readme = "README.md"
 categories = ["API bindings"]
-keywords = ["qdrant", "vector db", "llm", "sdk"]
+keywords = ["rro", "vector db", "llm", "sdk"]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -29,17 +29,17 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 log = "0.4"
 
-# Qdrant internal crates (from submodule)
-api = { path = "./.modules/qdrant/lib/api" }
-collection = { path = "./.modules/qdrant/lib/collection" }
-common = { path = "./.modules/qdrant/lib/common/common" }
-cancel = { path = "./.modules/qdrant/lib/common/cancel" }
-io_lib = { package = "io", path = "./.modules/qdrant/lib/common/io" }
-issues = { path = "./.modules/qdrant/lib/common/issues" }
-memory = { path = "./.modules/qdrant/lib/common/memory" }
-segment = { path = "./.modules/qdrant/lib/segment", default-features = false }
-shard = { path = "./.modules/qdrant/lib/shard" }
-storage = { path = "./.modules/qdrant/lib/storage" }
+# RRO internal crates (from submodule)
+api = { path = "./.modules/rro/lib/api" }
+collection = { path = "./.modules/rro/lib/collection" }
+common = { path = "./.modules/rro/lib/common/common" }
+cancel = { path = "./.modules/rro/lib/common/cancel" }
+io_lib = { package = "io", path = "./.modules/rro/lib/common/io" }
+issues = { path = "./.modules/rro/lib/common/issues" }
+memory = { path = "./.modules/rro/lib/common/memory" }
+segment = { path = "./.modules/rro/lib/segment", default-features = false }
+shard = { path = "./.modules/rro/lib/shard" }
+storage = { path = "./.modules/rro/lib/storage" }
 ordered-float = "5.1.0"
 
 [dev-dependencies]
@@ -51,6 +51,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dependencies.time]
 version = "0.3.44"
 
-# Qdrant's fork of tar with set_sync method
+# RRO's fork of tar with set_sync method
 [patch.crates-io]
-tar = { git = "https://github.com/qdrant/tar-rs", branch = "main" }
+tar = { git = "https://github.com/eonsofstupid/rrotar-rs", branch = "main" }

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::{shard_selector, ColName};
-use crate::{Handler, QdrantRequest};
+use crate::{Handler, RRORequest};
 use api::rest::schema::SearchGroupsRequestInternal;
 use async_trait::async_trait;
 use collection::{
@@ -455,9 +455,9 @@ fn context_pair_from_rest(
     })
 }
 
-impl From<QueryRequest> for QdrantRequest {
+impl From<QueryRequest> for RRORequest {
     fn from(req: QueryRequest) -> Self {
-        QdrantRequest::Query(req)
+        RRORequest::Query(req)
     }
 }
 

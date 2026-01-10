@@ -1,5 +1,5 @@
 use super::{shard_selector, ColName};
-use crate::{Handler, QdrantRequest};
+use crate::{Handler, RRORequest};
 use api::rest::schema::ShardKeySelector;
 use async_trait::async_trait;
 use collection::operations::types::{AliasDescription, CollectionInfo, CollectionsAliasesResponse};
@@ -174,15 +174,15 @@ impl Handler for AliasRequest {
     }
 }
 
-impl From<CollectionRequest> for QdrantRequest {
+impl From<CollectionRequest> for RRORequest {
     fn from(req: CollectionRequest) -> Self {
-        QdrantRequest::Collection(req)
+        RRORequest::Collection(req)
     }
 }
 
-impl From<AliasRequest> for QdrantRequest {
+impl From<AliasRequest> for RRORequest {
     fn from(req: AliasRequest) -> Self {
-        QdrantRequest::Alias(req)
+        RRORequest::Alias(req)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
     helpers::{create_general_purpose_runtime, create_search_runtime, create_update_runtime},
     AliasRequest, AliasResponse, CollectionRequest, CollectionResponse, Handler, PointsRequest,
-    PointsResponse, QdrantClient, QdrantError, QdrantMsg, QueryRequest, QueryResponse, Settings,
+    PointsResponse, RroClient, RROError, RROMsg, QueryRequest, QueryResponse, Settings,
 };
 use async_trait::async_trait;
 use collection::shards::channel_service::ChannelService;
@@ -18,10 +18,10 @@ use tokio::{
 };
 use tracing::{debug, warn};
 
-const QDRANT_CHANNEL_BUFFER: usize = 1024;
+const RRO_CHANNEL_BUFFER: usize = 1024;
 
 #[derive(Debug, Deserialize)]
-pub enum QdrantRequest {
+pub enum RRORequest {
     Collection(CollectionRequest),
     Alias(AliasRequest),
     Points(PointsRequest),
@@ -29,25 +29,25 @@ pub enum QdrantRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub enum QdrantResponse {
+pub enum RROResponse {
     Collection(CollectionResponse),
     Alias(AliasResponse),
     Points(PointsResponse),
     Query(QueryResponse),
 }
 
-pub struct QdrantInstance;
+pub struct RROInstance;
 
-impl QdrantInstance {
-    pub fn start(config_path: Option<String>) -> Result<Arc<QdrantClient>, QdrantError> {
-        let (tx, mut rx) = mpsc::channel::<QdrantMsg>(QDRANT_CHANNEL_BUFFER);
+impl RROInstance {
+    pub fn start(config_path: Option<String>) -> Result<Arc<RroClient>, RROError> {
+        let (tx, mut rx) = mpsc::channel::<RROMsg>(RRO_CHANNEL_BUFFER);
 
         let (terminated_tx, terminated_rx) = oneshot::channel::<()>();
 
         let handle = thread::Builder::new()
-            .name("qdrant".to_string())
+            .name("rro".to_string())
             .spawn(move || {
-                let (toc, rt) = start_qdrant(config_path)?;
+                let (toc, rt) = start_rro(config_path)?;
                 let toc_clone = toc.clone();
                 rt.block_on(async move {
                     while let Some((msg, resp_sender)) = rx.recv().await {
@@ -59,11 +59,11 @@ impl QdrantInstance {
                             }
                         });
                     }
-                    Ok::<(), QdrantError>(())
+                    Ok::<(), RROError>(())
                 })?;
 
                 // clean things up
-                // see this thread: https://github.com/qdrant/qdrant/issues/1316
+                // see this thread: https://github.com/eonsofstupid/rrorro/issues/1316
                 let mut toc_arc = toc_clone;
                 loop {
                     match Arc::try_unwrap(toc_arc) {
@@ -81,10 +81,10 @@ impl QdrantInstance {
                         }
                     }
                 }
-                Ok::<(), QdrantError>(())
+                Ok::<(), RROError>(())
             })
             .unwrap();
-        Ok(Arc::new(QdrantClient {
+        Ok(Arc::new(RroClient {
             tx: ManuallyDrop::new(tx),
             handle,
             terminated_rx,
@@ -93,34 +93,34 @@ impl QdrantInstance {
 }
 
 #[async_trait]
-impl Handler for QdrantRequest {
-    type Response = QdrantResponse;
+impl Handler for RRORequest {
+    type Response = RROResponse;
     type Error = StorageError;
 
     async fn handle(self, toc: &TableOfContent) -> Result<Self::Response, Self::Error> {
         match self {
-            QdrantRequest::Collection(req) => {
+            RRORequest::Collection(req) => {
                 let resp = req.handle(toc).await?;
-                Ok(QdrantResponse::Collection(resp))
+                Ok(RROResponse::Collection(resp))
             }
-            QdrantRequest::Alias(req) => {
+            RRORequest::Alias(req) => {
                 let resp = req.handle(toc).await?;
-                Ok(QdrantResponse::Alias(resp))
+                Ok(RROResponse::Alias(resp))
             }
-            QdrantRequest::Points(req) => {
+            RRORequest::Points(req) => {
                 let resp = req.handle(toc).await?;
-                Ok(QdrantResponse::Points(resp))
+                Ok(RROResponse::Points(resp))
             }
-            QdrantRequest::Query(req) => {
+            RRORequest::Query(req) => {
                 let resp = req.handle(toc).await?;
-                Ok(QdrantResponse::Query(resp))
+                Ok(RROResponse::Query(resp))
             }
         }
     }
 }
 
-/// Start Qdrant and get TableOfContent.
-fn start_qdrant(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Handle), QdrantError> {
+/// Start RRO and get TableOfContent.
+fn start_rro(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Handle), RROError> {
     let settings = Settings::new(config_path).expect("Failed to load settings");
 
     memory::madvise::set_global(settings.storage.mmap_advice);
@@ -129,8 +129,8 @@ fn start_qdrant(config_path: Option<String>) -> Result<(Arc<TableOfContent>, Han
     );
 
     if let Some(recovery_warning) = &settings.storage.recovery_mode {
-        warn!("Qdrant is loaded in recovery mode: {}", recovery_warning);
-        warn!("Read more: https://qdrant.tech/documentation/guides/administration/#recovery-mode");
+        warn!("RRO is loaded in recovery mode: {}", recovery_warning);
+        warn!("Read more: https://devpulse.app/documentation/guides/administration/#recovery-mode");
     }
 
     // Saved state of the consensus. This is useless for single node mode.

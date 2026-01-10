@@ -28,14 +28,14 @@ git submodule update --init --recursive
 
 ## Build from Workspace Root
 // turbo
-Run builds from `c:\localdev\qdrant-rs`:
+Run builds from `c:\localdev\rro-rs`:
 ```powershell
-cd c:\localdev\qdrant-rs
+cd c:\localdev\rro-rs
 C:\Users\jessa\.cargo\bin\cargo.exe check
 ```
 
 Or from the package directory:
 ```powershell
-cd c:\localdev\qdrant-rs\qdrantrs-port
+cd c:\localdev\rro-rs\rrors-port
 C:\Users\jessa\.cargo\bin\cargo.exe check
 ```

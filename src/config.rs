@@ -59,8 +59,8 @@ impl Settings {
         }
 
         // Merge environment settings
-        // E.g.: `QDRANT_DEBUG=1 ./target/app` would set `debug=true`
-        config = config.add_source(Environment::with_prefix("QDRANT").separator("__"));
+        // E.g.: `RRO_DEBUG=1 ./target/app` would set `debug=true`
+        config = config.add_source(Environment::with_prefix("RRO").separator("__"));
 
         // Build and merge config and deserialize into Settings, attach any load errors we had
         let settings: Settings = config.build()?.try_deserialize()?;

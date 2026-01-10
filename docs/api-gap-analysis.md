@@ -1,8 +1,8 @@
-# API Gap Analysis: Dashboard vs qdrant-lib
+# API Gap Analysis: Dashboard vs rro-lib
 
 ## CRITICAL FINDING
 
-The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**.
+The rro-lib has **27 methods**. The dashboard uses **30+ distinct API calls**.
 
 **There are GAPS that must be filled before the dashboard can work.**
 
@@ -11,7 +11,7 @@ The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**
 ## Dashboard API Calls (Extracted from source)
 
 ### Collections (7 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `getCollections()` | `list_collections()` | ✅ EXISTS |
 | `getCollection(name)` | `get_collection(name)` | ✅ EXISTS |
@@ -22,13 +22,13 @@ The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**
 | `updateCollectionCluster(name, ops)` | ❌ | ❌ **N/A EMBEDDED** |
 
 ### Aliases (2 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `getAliases()` | `list_aliases()` | ✅ EXISTS |
 | `updateCollectionAliases(actions)` | ❌ | ❌ **MISSING** (bulk alias ops) |
 
 ### Points (7 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `scroll(collection, opts)` | ❌ | ❌ **MISSING** |
 | `retrieve(collection, opts)` | `get_points(collection, data)` | ✅ EXISTS (different name) |
@@ -39,25 +39,25 @@ The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**
 | `query(collection, opts)` | ❌ | ❌ **MISSING** (unified query API) |
 
 ### Search (2 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `search(collection, opts)` | `search_points(collection, data)` | ✅ EXISTS (implied) |
 | `searchMatrixPairs(collection, opts)` | ❌ | ❌ **MISSING** |
 
 ### Snapshots (3 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `recoverSnapshot(name, opts)` | `recover_snapshots()` (in snapshots.rs) | ⚠️ EXISTS (not in client) |
 | `getSnapshotUploadUrl(name)` | ❌ | ❌ **N/A EMBEDDED** |
 | `abortDownload()` | ❌ | ❌ **N/A EMBEDDED** |
 
 ### Indexes (1 call)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `createPayloadIndex(name, params)` | ❌ | ❌ **MISSING** |
 
 ### Service (2 calls)
-| Dashboard Call | qdrant-lib Method | Status |
+| Dashboard Call | rro-lib Method | Status |
 |----------------|-------------------|--------|
 | `api('service').telemetry()` | ❌ | ❌ **MISSING** |
 | `getApiKey()` | ❌ | ❌ **N/A EMBEDDED** |
@@ -66,12 +66,12 @@ The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**
 
 ## Gap Summary
 
-### ❌ MISSING Methods (Must Add to qdrant-lib)
+### ❌ MISSING Methods (Must Add to rro-lib)
 
 | Method | Priority | Notes |
 |--------|----------|-------|
 | `scroll_points()` | **P0** | Core browsing functionality |
-| `query_points()` | **P0** | Unified query API (new in Qdrant) |
+| `query_points()` | **P0** | Unified query API (new in RRO) |
 | `collection_exists()` | P1 | Simple check |
 | `overwrite_payload()` | P1 | Full payload replacement |
 | `update_collection_aliases()` | P1 | Bulk alias operations |
@@ -90,9 +90,9 @@ The qdrant-lib has **27 methods**. The dashboard uses **30+ distinct API calls**
 
 ---
 
-## qdrant-lib Methods NOT Used by Dashboard
+## rro-lib Methods NOT Used by Dashboard
 
-These exist in qdrant-lib but dashboard doesn't call them:
+These exist in rro-lib but dashboard doesn't call them:
 
 | Method | Notes |
 |--------|-------|
@@ -112,7 +112,7 @@ These exist in qdrant-lib but dashboard doesn't call them:
 
 ---
 
-## Methods to Add to qdrant-lib
+## Methods to Add to rro-lib
 
 ### P0 - Critical for Dashboard
 
@@ -126,20 +126,20 @@ pub async fn scroll_points(
     filter: Option<Filter>,
     with_payload: bool,
     with_vector: bool,
-) -> Result<(Vec<LocalRecord>, Option<PointId>), QdrantError>
+) -> Result<(Vec<LocalRecord>, Option<PointId>), RROError>
 
 // 2. query_points - Unified query API
 pub async fn query_points(
     &self,
     collection_name: impl Into<String>,
     query: QueryRequest,
-) -> Result<Vec<LocalScoredPoint>, QdrantError>
+) -> Result<Vec<LocalScoredPoint>, RROError>
 
 // 3. collection_exists
 pub async fn collection_exists(
     &self,
     name: impl Into<String>,
-) -> Result<bool, QdrantError>
+) -> Result<bool, RROError>
 ```
 
 ### P1 - Important for Full Feature Parity
@@ -150,13 +150,13 @@ pub async fn overwrite_payload(
     &self,
     collection_name: impl Into<String>,
     data: SetPayload,
-) -> Result<UpdateResult, QdrantError>
+) -> Result<UpdateResult, RROError>
 
 // 5. update_collection_aliases (bulk)
 pub async fn update_collection_aliases(
     &self,
     actions: Vec<AliasAction>,
-) -> Result<bool, QdrantError>
+) -> Result<bool, RROError>
 
 // 6. create_payload_index
 pub async fn create_payload_index(
@@ -164,7 +164,7 @@ pub async fn create_payload_index(
     collection_name: impl Into<String>,
     field_name: impl Into<String>,
     field_type: PayloadFieldType,
-) -> Result<UpdateResult, QdrantError>
+) -> Result<UpdateResult, RROError>
 ```
 
 ---
@@ -204,7 +204,7 @@ This is NOT done yet. Need to map React components to Svelte equivalents.
 
 ## Next Steps
 
-1. **Add missing P0 methods to qdrant-lib** (scroll_points, query_points, collection_exists)
+1. **Add missing P0 methods to rro-lib** (scroll_points, query_points, collection_exists)
 2. **Add P1 methods** (overwrite_payload, update_collection_aliases, create_payload_index)
 3. **Create complete SvelteKit route structure**
 4. **Create TypeScript contracts for all methods**

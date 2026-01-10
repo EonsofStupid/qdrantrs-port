@@ -1,22 +1,22 @@
-# Project Status Report: Qdrant Dashboard
+# Project Status Report: RRO Dashboard
 
 **Date:** 2026-01-05
 **Status:** Backend Compiled, Frontend Scaffolded
 
 ## Executive Summary
-The compilation and setup of the Qdrant Dashboard backend is complete. The Rust backend (`src-tauri`) now successfully compiles with the embedded `qdrant-lib`, resolving previous dependency conflicts, missing types, and method signature mismatches. The SvelteKit frontend has been populated with a functional structure including Dashboard, Collection Management, and a lightweight Console.
+The compilation and setup of the RRO Dashboard backend is complete. The Rust backend (`src-tauri`) now successfully compiles with the embedded `rro-lib`, resolving previous dependency conflicts, missing types, and method signature mismatches. The SvelteKit frontend has been populated with a functional structure including Dashboard, Collection Management, and a lightweight Console.
 
 ## 1. Backend Implementation (`src-tauri`)
 
 ### Compilation Status
 - **Result:** `cargo check` passing (Exit Code 0).
 - **Dependencies:** 
-  - `qdrant-lib` linked via local path.
-  - `uuid` (v4) added to support internal Qdrant types.
-  - `tar` crate patched via `[patch.crates-io]` to `qdrant/tar-rs`.
+  - `rro-lib` linked via local path.
+  - `uuid` (v4) added to support internal RRO types.
+  - `tar` crate patched via `[patch.crates-io]` to `rro/tar-rs`.
 
 ### Resolved Issues
-1.  **Unresolved Imports:** Fixed imports for `PointStruct` and `PointsSelector` by using correct re-exports from `qdrant_lib`.
+1.  **Unresolved Imports:** Fixed imports for `PointStruct` and `PointsSelector` by using correct re-exports from `rro_lib`.
 2.  **Type Mismatches:**
     - `VectorParams` now correctly initializes `datatype` and uses `NonZeroU64`.
     - `ScrollRequestInternal` now initializes `order_by`.
@@ -34,7 +34,7 @@ The following Tauri commands are registered and ready for frontend use:
 ### Technology Stack
 - **Framework:** SvelteKit + Tauri
 - **State Management:** Svelte 5 Runes (`$state`, `$derived`, `$effect`)
-- **API Client:** Type-safe wrapper `src/lib/qdrant/client.ts`.
+- **API Client:** Type-safe wrapper `src/lib/rro/client.ts`.
 
 ### Implemented Routes
 1.  **Layout (`+layout.svelte`)**: Global sidebar navigation, responsive container.
@@ -53,4 +53,4 @@ The following Tauri commands are registered and ready for frontend use:
 
 1.  **Runtime Testing:** Run `npm run tauri dev` to verify actual data flow (Creation -> Ingestion -> Search).
 2.  **Component Refactoring:** Extract generic UI elements (Modal, Badge, DataTable) from `+page.svelte` files into `lib/components`.
-3.  **Visual Polish:** Enhance CSS variables in `app.css` for a more distinct "Qdrant" look.
+3.  **Visual Polish:** Enhance CSS variables in `app.css` for a more distinct "RRO" look.

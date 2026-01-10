@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::Result;
 use collection::operations::{point_ops::PointStruct, types::VectorParams};
-use qdrant_lib::{QdrantClient, QdrantInstance};
+use rro_lib::{RroClient, RROInstance};
 use segment::types::{Distance, Payload};
 use serde_json::{json, Value};
 use tokio::task::JoinHandle;
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let client = QdrantInstance::start(None)?;
+    let client = RROInstance::start(None)?;
     client.delete_collection(COLLECTION_NAME).await?;
 
     let params = VectorParams {
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
 }
 
 fn create_index_task(
-    client: Arc<QdrantClient>,
+    client: Arc<RroClient>,
     data: Vec<PointStruct>,
     total: usize,
 ) -> JoinHandle<Result<()>> {

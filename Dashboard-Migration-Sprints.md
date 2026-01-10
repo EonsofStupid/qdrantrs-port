@@ -3,8 +3,8 @@
 ## Project Layout
 
 ```
-c:\localdev\qdrant-rs\
-├── qdrantrs-port/                    # Embedded Qdrant library (EXISTING)
+c:\localdev\rro-rs\
+├── rrors-port/                    # Embedded RRO library (EXISTING)
 │   ├── src/
 │   │   ├── client.rs                 # Add scroll_points, query_points, etc.
 │   │   ├── ops/
@@ -16,7 +16,7 @@ c:\localdev\qdrant-rs\
 │       ├── ipc-contract.md
 │       └── api-gap-analysis.md
 │
-└── qdrant-dashboard/                 # NEW - SvelteKit dashboard
+└── rro-dashboard/                 # NEW - SvelteKit dashboard
     ├── src/
     │   ├── routes/                   # SvelteKit pages
     │   │   ├── +layout.svelte
@@ -35,7 +35,7 @@ c:\localdev\qdrant-rs\
     │   │       └── +page.svelte      # Sample datasets
     │   │
     │   ├── lib/
-    │   │   ├── qdrant/               # Tauri IPC bridge
+    │   │   ├── rro/               # Tauri IPC bridge
     │   │   │   ├── client.ts         # invoke() wrappers
     │   │   │   ├── types.ts          # TypeScript contracts
     │   │   │   └── index.ts
@@ -80,10 +80,10 @@ c:\localdev\qdrant-rs\
     │   └── app.css
     │
     ├── src-tauri/                    # Tauri Rust backend
-    │   ├── Cargo.toml                # Depends on qdrant-lib
+    │   ├── Cargo.toml                # Depends on rro-lib
     │   ├── src/
     │   │   ├── main.rs
-    │   │   ├── state.rs              # QdrantClient state
+    │   │   ├── state.rs              # RroClient state
     │   │   └── commands/
     │   │       ├── mod.rs
     │   │       ├── collections.rs    # Collection commands
@@ -126,7 +126,7 @@ c:\localdev\qdrant-rs\
 
 ---
 
-## TypeScript Contracts (lib/qdrant/types.ts)
+## TypeScript Contracts (lib/rro/types.ts)
 
 ```typescript
 // Core types
@@ -179,7 +179,7 @@ export interface UpdateResult {
 
 ---
 
-## Tauri Client (lib/qdrant/client.ts)
+## Tauri Client (lib/rro/client.ts)
 
 ```typescript
 import { invoke } from '@tauri-apps/api/core';
@@ -190,7 +190,7 @@ import type {
   UpdateResult 
 } from './types';
 
-export const qdrant = {
+export const rro = {
   // Collections
   listCollections: () => 
     invoke<string[]>('list_collections'),
@@ -235,16 +235,16 @@ export const qdrant = {
 
 ### Phase 1: Core Infrastructure (8-10 hrs)
 
-1. **qdrant-lib gaps** (4 hrs)
+1. **rro-lib gaps** (4 hrs)
    - Add scroll_points to client.rs
    - Add query_points to client.rs
    - Add collection_exists to client.rs
    - cargo check passes
 
 2. **Tauri project setup** (2 hrs)
-   - Create qdrant-dashboard folder
+   - Create rro-dashboard folder
    - npm create tauri-app@latest (SvelteKit template)
-   - Add qdrant-lib dependency
+   - Add rro-lib dependency
    - Verify builds
 
 3. **Tauri commands** (2 hrs)
@@ -298,4 +298,4 @@ export const qdrant = {
 
 ## Next Action
 
-Create `c:\localdev\qdrant-rs\qdrant-dashboard\` folder structure.
+Create `c:\localdev\rro-rs\rro-dashboard\` folder structure.

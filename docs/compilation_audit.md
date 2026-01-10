@@ -10,10 +10,10 @@
 **Fix:** Restore `use tauri::State;` in `src/commands/collections.rs`.
 
 ## 2. Unresolved Imports (`PointStruct`)
-**Error:** `unresolved import 'qdrant_lib::collection::operations::types::PointStruct'`
+**Error:** `unresolved import 'rro_lib::collection::operations::types::PointStruct'`
 **Location:** `src/commands/points.rs`
 **Cause:** `PointStruct` is located in `api::rest::schema`, not `collection::operations::types`.
-**Fix:** Import from `qdrant_lib::PointStruct` (re-exported) or `qdrant_lib::api::rest::schema::PointStruct`.
+**Fix:** Import from `rro_lib::PointStruct` (re-exported) or `rro_lib::api::rest::schema::PointStruct`.
 
 ## 3. Structural Mismatches (`VectorParams`)
 **Error:** `missing field 'datatype' in initializer of 'VectorParams'`
@@ -51,10 +51,10 @@ PointRequest {
 ## 7. Type Inference (`map_err`)
 **Error:** `type annotations needed`
 **Location:** Various
-**Cause:** Likely downstream of the missing `State` type making the method call on `state.qdrant` invalid, thus preventing return type inference.
+**Cause:** Likely downstream of the missing `State` type making the method call on `state.rro` invalid, thus preventing return type inference.
 **Fix:** Fixing item #1 (`State` import) should resolve most of these.
 
 ## Action Plan
-1.  **Verify Definitions:** Inspect `VectorParams`, `PointRequest`, `ScrollRequestInternal`, and `PointsSelector` in `qdrant-lib` source to confirm field names and structure.
+1.  **Verify Definitions:** Inspect `VectorParams`, `PointRequest`, `ScrollRequestInternal`, and `PointsSelector` in `rro-lib` source to confirm field names and structure.
 2.  **Refactor Code:** Apply fixes to `collections.rs` and `points.rs` based on verified definitions.
 3.  **Validate:** Run `cargo check` again.

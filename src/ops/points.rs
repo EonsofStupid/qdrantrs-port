@@ -1,5 +1,5 @@
 use super::{shard_selector, ColName};
-use crate::{Handler, QdrantRequest};
+use crate::{Handler, RRORequest};
 use api::rest::schema::{PointInsertOperations, PointsBatch, PointsList, ShardKeySelector, UpdateVectors};
 use async_trait::async_trait;
 use collection::operations::{
@@ -267,9 +267,9 @@ impl Handler for PointsRequest {
     }
 }
 
-impl From<PointsRequest> for QdrantRequest {
+impl From<PointsRequest> for RRORequest {
     fn from(req: PointsRequest) -> Self {
-        QdrantRequest::Points(req)
+        RRORequest::Points(req)
     }
 }
 

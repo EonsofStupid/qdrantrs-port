@@ -1,4 +1,4 @@
-# qdrant-lib API → Tauri IPC Command Mapping
+# rro-lib API → Tauri IPC Command Mapping
 
 Complete contract for Tauri integration. Each Rust method maps 1:1 to a Tauri command.
 
@@ -140,11 +140,11 @@ interface Condition {
 
 use tauri::State;
 use std::sync::Arc;
-use qdrant_lib::{QdrantClient, QdrantError};
+use rro_lib::{RroClient, RROError};
 
 #[tauri::command]
 pub async fn list_collections(
-    state: State<'_, Arc<QdrantClient>>
+    state: State<'_, Arc<RroClient>>
 ) -> Result<Vec<String>, String> {
     state.list_collections()
         .await
@@ -153,7 +153,7 @@ pub async fn list_collections(
 
 #[tauri::command]
 pub async fn get_collection(
-    state: State<'_, Arc<QdrantClient>>,
+    state: State<'_, Arc<RroClient>>,
     name: String
 ) -> Result<Option<serde_json::Value>, String> {
     state.get_collection(&name)
@@ -164,12 +164,12 @@ pub async fn get_collection(
 
 #[tauri::command]
 pub async fn create_collection(
-    state: State<'_, Arc<QdrantClient>>,
+    state: State<'_, Arc<RroClient>>,
     name: String,
     vector_size: usize,
     distance: String,
 ) -> Result<bool, String> {
-    use qdrant_lib::{Distance, VectorParams};
+    use rro_lib::{Distance, VectorParams};
     use collection::operations::types::VectorsConfig;
     
     let dist = match distance.as_str() {
@@ -196,10 +196,10 @@ pub async fn create_collection(
 ## SvelteKit Integration Pattern
 
 ```typescript
-// src/lib/qdrant.ts
+// src/lib/rro.ts
 import { invoke } from '@tauri-apps/api/core';
 
-export const qdrant = {
+export const rro = {
   // Collections
   listCollections: () => invoke<string[]>('list_collections'),
   getCollection: (name: string) => invoke<CollectionInfo | null>('get_collection', { name }),
@@ -239,4 +239,4 @@ export const qdrant = {
 | Search/Query | 6 |
 | **Total** | **27** |
 
-All 27 methods from `QdrantClient` are mapped to Tauri IPC commands.
+All 27 methods from `RroClient` are mapped to Tauri IPC commands.

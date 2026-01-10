@@ -1,7 +1,7 @@
-# Migration Refactoring Plan: Qdrant Dashboard
+# Migration Refactoring Plan: RRO Dashboard
 
 **Audit Date:** 2026-01-05
-**Source:** `c:\localdev\qdrant-rs\qdrantrs-port\dashboard-upstream\`
+**Source:** `c:\localdev\rro-rs\rrors-port\dashboard-upstream\`
 **Target:** SvelteKit + Tauri (`src-tauri`)
 
 ## 1. Executive Summary

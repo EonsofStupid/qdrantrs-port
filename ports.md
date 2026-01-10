@@ -1,8 +1,8 @@
-# Qdrant Dashboard Port - Embedded Edition
+# RRO Dashboard Port - Embedded Edition
 
 ## Goal
 
-Port the Qdrant Dashboard (React app) from HTTP/REST calls to **direct embedded calls** via Tauri IPC.
+Port the RRO Dashboard (React app) from HTTP/REST calls to **direct embedded calls** via Tauri IPC.
 
 **NO HTTP. NO REST. DIRECT FUNCTION CALLS.**
 
@@ -12,12 +12,12 @@ Port the Qdrant Dashboard (React app) from HTTP/REST calls to **direct embedded 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    qdrant-web-ui (React)                         │
+│                    rro-web-ui (React)                         │
 │                         Axios HTTP                               │
 │                            ↓                                     │
 │                    HTTP/REST over network                        │
 │                            ↓                                     │
-│                    Qdrant Server (actix)                         │
+│                    RRO Server (actix)                         │
 │                            ↓                                     │
 │                       TableOfContent                             │
 └─────────────────────────────────────────────────────────────────┘
@@ -34,7 +34,7 @@ Port the Qdrant Dashboard (React app) from HTTP/REST calls to **direct embedded 
 │                      Tauri Application                           │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                  React Frontend                              ││
-│  │              (qdrant-web-ui, modified)                       ││
+│  │              (rro-web-ui, modified)                       ││
 │  │                        ↓                                     ││
 │  │              invoke("list_collections")    ← Tauri IPC       ││
 │  └──────────────────────────┬──────────────────────────────────┘│
@@ -44,14 +44,14 @@ Port the Qdrant Dashboard (React app) from HTTP/REST calls to **direct embedded 
 │  │                                                              ││
 │  │   #[tauri::command]                                          ││
 │  │   async fn list_collections(                                 ││
-│  │       state: State<QdrantClient>                             ││
+│  │       state: State<RroClient>                             ││
 │  │   ) -> Vec<CollectionInfo> {                                 ││
 │  │       state.list_collections().await                         ││
 │  │   }                                                          ││
 │  │                        ↓                                     ││
-│  │              QdrantClient (our library)                      ││
+│  │              RroClient (our library)                      ││
 │  │                        ↓                                     ││
-│  │                  QdrantInstance                              ││
+│  │                  RROInstance                              ││
 │  │              (embedded, in-process)                          ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
@@ -66,12 +66,12 @@ Port the Qdrant Dashboard (React app) from HTTP/REST calls to **direct embedded 
 | Feature | Tauri | Electron |
 |---------|-------|----------|
 | Backend language | **Rust** ✅ | JavaScript/Node |
-| Can use our QdrantClient | **Direct** ✅ | Need napi-rs binding |
+| Can use our RroClient | **Direct** ✅ | Need napi-rs binding |
 | Binary size | ~3MB | ~150MB |
 | Memory usage | Low | High |
 | Security | Sandboxed | Less secure |
 
-Tauri is Rust-native. We can directly use `qdrant-lib` in the Tauri backend.
+Tauri is Rust-native. We can directly use `rro-lib` in the Tauri backend.
 
 ---
 
@@ -79,22 +79,22 @@ Tauri is Rust-native. We can directly use `qdrant-lib` in the Tauri backend.
 
 ### Phase 1: Tauri Project Setup
 
-**Goal:** Create Tauri app that embeds our qdrant-lib
+**Goal:** Create Tauri app that embeds our rro-lib
 
 ```bash
-# Create new Tauri project adjacent to qdrantrs-port
+# Create new Tauri project adjacent to rrors-port
 cargo install create-tauri-app
-cargo create-tauri-app qdrant-dashboard --template react-ts
+cargo create-tauri-app rro-dashboard --template react-ts
 ```
 
 **Structure:**
 ```
-qdrant-dashboard/
+rro-dashboard/
 ├── src/                    # React frontend
 │   ├── App.tsx
 │   └── ...
 ├── src-tauri/
-│   ├── Cargo.toml          # Depends on qdrant-lib
+│   ├── Cargo.toml          # Depends on rro-lib
 │   ├── src/
 │   │   ├── main.rs         # Tauri entry point
 │   │   ├── commands/       # Tauri commands
@@ -102,7 +102,7 @@ qdrant-dashboard/
 │   │   │   ├── collections.rs
 │   │   │   ├── points.rs
 │   │   │   └── search.rs
-│   │   └── state.rs        # QdrantClient state
+│   │   └── state.rs        # RroClient state
 │   └── tauri.conf.json
 └── package.json
 ```
@@ -111,7 +111,7 @@ qdrant-dashboard/
 ```toml
 [dependencies]
 tauri = { version = "2", features = ["shell-open"] }
-qdrant-lib = { path = "../qdrantrs-port" }
+rro-lib = { path = "../rrors-port" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -121,21 +121,21 @@ serde_json = "1"
 
 ### Phase 2: Tauri Commands (Rust Backend)
 
-**Goal:** Expose QdrantClient methods as Tauri commands
+**Goal:** Expose RroClient methods as Tauri commands
 
 **src-tauri/src/state.rs:**
 ```rust
-use qdrant_lib::{QdrantClient, QdrantInstance};
+use rro_lib::{RroClient, RROInstance};
 use std::sync::Arc;
 
 pub struct AppState {
-    pub client: Arc<QdrantClient>,
+    pub client: Arc<RroClient>,
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let instance = QdrantInstance::start(None)
-            .expect("Failed to start embedded Qdrant");
+        let instance = RROInstance::start(None)
+            .expect("Failed to start embedded RRO");
         Self {
             client: Arc::new(instance),
         }
@@ -214,7 +214,7 @@ fn main() {
 
 **Original (HTTP):**
 ```typescript
-// qdrant-web-ui uses Axios
+// rro-web-ui uses Axios
 import axios from 'axios';
 
 const getCollections = async () => {
@@ -234,10 +234,10 @@ const getCollections = async () => {
 
 **Create abstraction layer:**
 ```typescript
-// src/api/qdrant.ts
+// src/api/rro.ts
 import { invoke } from '@tauri-apps/api/core';
 
-export const qdrantApi = {
+export const rroApi = {
   listCollections: () => invoke('list_collections'),
   getCollection: (name: string) => invoke('get_collection', { name }),
   createCollection: (name: string, vectorSize: number) => 
@@ -253,16 +253,16 @@ export const qdrantApi = {
 
 ---
 
-### Phase 4: Fork and Modify qdrant-web-ui
+### Phase 4: Fork and Modify rro-web-ui
 
 **Steps:**
-1. Fork `qdrant/qdrant-web-ui` to our repo
+1. Fork `rro/rro-web-ui` to our repo
 2. Remove Axios dependency
 3. Replace all API calls with `invoke()` calls
 4. Update package.json for Tauri compatibility
 5. Test each feature
 
-**Files to modify in qdrant-web-ui:**
+**Files to modify in rro-web-ui:**
 - `src/api/` - Replace HTTP client with Tauri invoke
 - `src/context/Client.jsx` - Remove URL configuration
 - Any file importing axios
@@ -271,7 +271,7 @@ export const qdrantApi = {
 
 ## Commands to Implement
 
-| Tauri Command | QdrantClient Method | Dashboard Usage |
+| Tauri Command | RroClient Method | Dashboard Usage |
 |---------------|---------------------|-----------------|
 | `list_collections` | `list_collections()` | Homepage |
 | `get_collection` | `get_collection(name)` | Collection detail |
@@ -289,20 +289,20 @@ export const qdrantApi = {
 ## Project Structure (Final)
 
 ```
-c:\localdev\qdrant-rs\
-├── qdrantrs-port/              # Our embedded Qdrant library
+c:\localdev\rro-rs\
+├── rrors-port/              # Our embedded RRO library
 │   ├── src/
 │   ├── Cargo.toml
 │   └── ...
 │
-└── qdrant-dashboard/           # NEW - Tauri app
-    ├── src/                    # React frontend (forked qdrant-web-ui)
+└── rro-dashboard/           # NEW - Tauri app
+    ├── src/                    # React frontend (forked rro-web-ui)
     │   ├── App.tsx
     │   ├── api/
-    │   │   └── qdrant.ts       # Tauri invoke wrappers
+    │   │   └── rro.ts       # Tauri invoke wrappers
     │   └── ...
     ├── src-tauri/
-    │   ├── Cargo.toml          # depends on qdrant-lib
+    │   ├── Cargo.toml          # depends on rro-lib
     │   ├── src/
     │   │   ├── main.rs
     │   │   ├── state.rs
@@ -324,7 +324,7 @@ c:\localdev\qdrant-rs\
 ```toml
 [dependencies]
 tauri = { version = "2", features = [] }
-qdrant-lib = { path = "../qdrantrs-port" }
+rro-lib = { path = "../rrors-port" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -365,11 +365,11 @@ serde = { version = "1", features = ["derive"] }
 
 ## Next Steps
 
-1. [ ] Create Tauri project in `c:\localdev\qdrant-rs\qdrant-dashboard`
-2. [ ] Add qdrant-lib as dependency
-3. [ ] Implement AppState with embedded Qdrant
+1. [ ] Create Tauri project in `c:\localdev\rro-rs\rro-dashboard`
+2. [ ] Add rro-lib as dependency
+3. [ ] Implement AppState with embedded RRO
 4. [ ] Implement `list_collections` command
-5. [ ] Fork qdrant-web-ui
+5. [ ] Fork rro-web-ui
 6. [ ] Replace one API call with invoke() and test
 7. [ ] Port remaining API calls
 8. [ ] Full integration testing

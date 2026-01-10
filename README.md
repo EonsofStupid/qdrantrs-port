@@ -1,8 +1,8 @@
-# qdrant-lib
+# rro-lib
 
-**Embedded Qdrant Vector Database for Rust Applications**
+**Embedded RRO Vector Database for Rust Applications**
 
-A modernized fork that runs Qdrant as an **in-process embedded library**, eliminating the need for a separate server. Aligned to Qdrant v1.16.3.
+A modernized fork that runs RRO as an **in-process embedded library**, eliminating the need for a separate server. Aligned to RRO v1.16.3.
 
 [![Rust](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@ A modernized fork that runs Qdrant as an **in-process embedded library**, elimin
 
 ## 🎯 What This Is
 
-| Standard Qdrant | This Library (qdrant-lib) |
+| Standard RRO | This Library (rro-lib) |
 |-----------------|---------------------------|
 | Separate server process | **Embedded in your app** |
 | gRPC/REST communication | **Direct function calls** |
@@ -19,8 +19,8 @@ A modernized fork that runs Qdrant as an **in-process embedded library**, elimin
 | Manage server lifecycle | **Automatic lifecycle** |
 
 ```rust
-// Start embedded Qdrant with one line
-let client = QdrantInstance::start(None)?;
+// Start embedded RRO with one line
+let client = RROInstance::start(None)?;
 
 // Use it directly - no network, no gRPC
 client.create_collection("my_vectors", vectors_config).await?;
@@ -36,12 +36,12 @@ let results = client.search_points("my_vectors", search_request).await?;
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Your Application                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                          QdrantClient                            │
+│                          RroClient                            │
 │                    (mpsc channel sender)                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                         qdrant thread                            │
+│                         rro thread                            │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    QdrantInstance                        │    │
+│  │                    RROInstance                        │    │
 │  │  ┌─────────────────┬─────────────────┬────────────────┐ │    │
 │  │  │  Search Runtime │ Update Runtime  │ General Runtime│ │    │
 │  │  │  (N-1 threads)  │ (optimizers)    │ (I/O + misc)   │ │    │
@@ -63,8 +63,8 @@ let results = client.search_points("my_vectors", search_request).await?;
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/lib.rs` | 80 | Entry point, exports `QdrantClient`, `QdrantInstance`, `Settings` |
-| `src/instance.rs` | 190 | **Tokio runtime setup**, spawns qdrant thread, message loop |
+| `src/lib.rs` | 80 | Entry point, exports `RroClient`, `RROInstance`, `Settings` |
+| `src/instance.rs` | 190 | **Tokio runtime setup**, spawns rro thread, message loop |
 | `src/client.rs` | 430 | **30+ API methods** for collections, points, search, payloads |
 | `src/config.rs` | 78 | YAML configuration loading via `config` crate |
 | `src/helpers.rs` | 69 | Runtime builders (search, update, general) |
@@ -103,9 +103,9 @@ create_general_purpose_runtime()
 
 ```rust
 // Client sends requests via mpsc channel
-let (tx, rx) = mpsc::channel::<QdrantMsg>(1024);
+let (tx, rx) = mpsc::channel::<RROMsg>(1024);
 
-// Qdrant thread receives and dispatches
+// RRO thread receives and dispatches
 while let Some((msg, resp_sender)) = rx.recv().await {
     tokio::spawn(async move {
         let res = msg.handle(&toc).await;
@@ -114,11 +114,11 @@ while let Some((msg, resp_sender)) = rx.recv().await {
 }
 ```
 
-> **Clean shutdown**: Dropping `QdrantClient` closes channel → thread exits → ToC cleanup.
+> **Clean shutdown**: Dropping `RroClient` closes channel → thread exits → ToC cleanup.
 
 ### 3. **Direct Storage Access** (`ops/*.rs`)
 
-No gRPC serialization. Direct calls to Qdrant internal crates:
+No gRPC serialization. Direct calls to RRO internal crates:
 ```rust
 // Direct TableOfContent access
 toc.perform_collection_meta_op(op).await?;
@@ -159,8 +159,8 @@ telemetry_disabled: false
 ### Environment Override
 
 ```bash
-export QDRANT__STORAGE__STORAGE_PATH=/custom/path
-export QDRANT__STORAGE__ON_DISK_PAYLOAD=false
+export RRO__STORAGE__STORAGE_PATH=/custom/path
+export RRO__STORAGE__ON_DISK_PAYLOAD=false
 ```
 
 ---
@@ -171,7 +171,7 @@ export QDRANT__STORAGE__ON_DISK_PAYLOAD=false
 
 | Issue | Current State | Recommendation |
 |-------|---------------|----------------|
-| **Panic on unexpected response** | `panic!("Unexpected response")` in client.rs | Return `Err(QdrantError::UnexpectedResponse)` |
+| **Panic on unexpected response** | `panic!("Unexpected response")` in client.rs | Return `Err(RROError::UnexpectedResponse)` |
 | **No request timeout** | Unbounded channel waits | Add `tokio::time::timeout` wrapper |
 | **Error context** | Basic error types | Add `anyhow` context or custom Display |
 | **Graceful shutdown** | Spin-wait loop | Use `tokio::select!` with timeout |
@@ -219,10 +219,10 @@ export QDRANT__STORAGE__ON_DISK_PAYLOAD=false
 
 ### 1. Web Dashboard Integration
 
-Port Qdrant's web UI to work with embedded mode:
+Port RRO's web UI to work with embedded mode:
 ```rust
 // Proposed API
-let client = QdrantInstance::start(None)?;
+let client = RROInstance::start(None)?;
 let dashboard = client.start_dashboard(8080)?; // Serves UI at localhost:8080
 ```
 
@@ -231,7 +231,7 @@ let dashboard = client.start_dashboard(8080)?; // Serves UI at localhost:8080
 Replace panics with proper error types:
 ```rust
 #[derive(Error, Debug)]
-pub enum QdrantError {
+pub enum RROError {
     #[error("Collection error: {0}")]
     Collection(#[from] CollectionError),
     #[error("Unexpected response type")]
@@ -255,10 +255,10 @@ client.health_check() -> HealthStatus
 
 ## 🔗 Dependencies
 
-This library uses Qdrant's internal crates via git submodule:
+This library uses RRO's internal crates via git submodule:
 
 ```
-.modules/qdrant/lib/
+.modules/rro/lib/
 ├── api/
 ├── collection/
 ├── common/
@@ -267,9 +267,9 @@ This library uses Qdrant's internal crates via git submodule:
 └── storage/
 ```
 
-**Update Qdrant version:**
+**Update RRO version:**
 ```bash
-cd .modules/qdrant
+cd .modules/rro
 git fetch origin
 git checkout v1.17.0  # or desired version
 cd ../..
@@ -280,11 +280,11 @@ cargo build
 
 ## 📜 License
 
-Apache 2.0 - Same as upstream Qdrant.
+Apache 2.0 - Same as upstream RRO.
 
 ---
 
 ## 🙏 Credits
 
-- [Qdrant Team](https://qdrant.tech/) - Original vector database
+- [RRO Team](https://devpulse.app/) - Original vector database
 - This fork maintained by [@EonsofStupid](https://github.com/EonsofStupid)

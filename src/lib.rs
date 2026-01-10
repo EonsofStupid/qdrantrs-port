@@ -26,9 +26,9 @@ pub use api::rest::schema::QueryRequest as CollectionQueryRequest; // Alias it f
 pub use api::rest::schema::QueryRequest as QueryPointsRequest;
 
 pub use config::Settings;
-pub use error::QdrantError;
-pub use instance::QdrantInstance;
-pub use instance::{QdrantRequest, QdrantResponse};
+pub use error::RROError;
+pub use instance::RROInstance;
+pub use instance::{RRORequest, RROResponse};
 pub use ops::*;
 pub use segment::types::{Distance, Payload, WithPayloadInterface};
 pub use storage::content_manager::errors::StorageError;
@@ -41,16 +41,16 @@ pub use segment;
 pub use shard;
 pub use storage;
 
-type QdrantMsg = (QdrantRequest, QdrantResponder);
-type QdrantResult = Result<QdrantResponse, StorageError>;
-type QdrantResponder = oneshot::Sender<QdrantResult>;
+type RROMsg = (RRORequest, RROResponder);
+type RROResult = Result<RROResponse, StorageError>;
+type RROResponder = oneshot::Sender<RROResult>;
 
 #[derive(Debug)]
-pub struct QdrantClient {
-    tx: ManuallyDrop<mpsc::Sender<QdrantMsg>>,
+pub struct RroClient {
+    tx: ManuallyDrop<mpsc::Sender<RROMsg>>,
     terminated_rx: oneshot::Receiver<()>,
     #[allow(dead_code)]
-    handle: JoinHandle<Result<(), QdrantError>>,
+    handle: JoinHandle<Result<(), RROError>>,
 }
 
 #[async_trait::async_trait]

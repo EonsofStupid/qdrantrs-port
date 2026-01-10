@@ -1,8 +1,8 @@
-# qdrant-lib Tokio/Async Architecture
+# rro-lib Tokio/Async Architecture
 
 ## Overview
 
-The embedded qdrant-lib uses Tokio for async runtime and inter-thread communication.
+The embedded rro-lib uses Tokio for async runtime and inter-thread communication.
 
 ---
 
@@ -15,20 +15,20 @@ The embedded qdrant-lib uses Tokio for async runtime and inter-thread communicat
 ```rust
 use tokio::sync::{mpsc, oneshot};
 
-type QdrantMsg = (QdrantRequest, QdrantResponder);
-type QdrantResult = Result<QdrantResponse, StorageError>;
-type QdrantResponder = oneshot::Sender<QdrantResult>;
+type RROMsg = (RRORequest, RROResponder);
+type RROResult = Result<RROResponse, StorageError>;
+type RROResponder = oneshot::Sender<RROResult>;
 ```
 
 **What it does:**
-- `mpsc::Sender<QdrantMsg>` - Multi-producer channel for requests
-- `oneshot::Sender<QdrantResult>` - One-shot channel for responses
+- `mpsc::Sender<RROMsg>` - Multi-producer channel for requests
+- `oneshot::Sender<RROResult>` - One-shot channel for responses
 
 ---
 
 ### 2. `src/instance.rs` (Lines 15-18, 43-63)
 
-**Purpose:** Spawns Qdrant thread and message loop
+**Purpose:** Spawns RRO thread and message loop
 
 ```rust
 use tokio::{
@@ -37,7 +37,7 @@ use tokio::{
 };
 
 // Channel creation
-let (tx, mut rx) = mpsc::channel::<QdrantMsg>(QDRANT_CHANNEL_BUFFER);
+let (tx, mut rx) = mpsc::channel::<RROMsg>(RRO_CHANNEL_BUFFER);
 let (terminated_tx, terminated_rx) = oneshot::channel::<()>();
 
 // Message loop
@@ -53,7 +53,7 @@ rt.block_on(async move {
 ```
 
 **What it does:**
-- Creates mpsc channel for client → qdrant communication
+- Creates mpsc channel for client → rro communication
 - Creates oneshot channel for shutdown signaling
 - Spawns new Tokio task for each request (concurrent handling)
 
@@ -94,16 +94,16 @@ use tokio::sync::{
 };
 
 // Health check with timeout
-pub async fn health_check(&self) -> Result<(), QdrantError> {
+pub async fn health_check(&self) -> Result<(), RROError> {
     let timeout = Duration::from_secs(5);
-    let (tx, rx) = oneshot::channel::<QdrantResult>();
+    let (tx, rx) = oneshot::channel::<RROResult>();
     
-    self.tx.send((msg, tx)).await.map_err(|_| QdrantError::ChannelClosed)?;
+    self.tx.send((msg, tx)).await.map_err(|_| RROError::ChannelClosed)?;
     
     match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(_)) => Ok(()),
-        Ok(Err(_)) => Err(QdrantError::ChannelClosed),
-        Err(_) => Err(QdrantError::Timeout(timeout)),
+        Ok(Err(_)) => Err(RROError::ChannelClosed),
+        Err(_) => Err(RROError::Timeout(timeout)),
     }
 }
 
@@ -118,7 +118,7 @@ async fn send_request_with_timeout(&self, msg, timeout) -> Result<...> {
 **What it does:**
 - `tokio::time::timeout` - All requests have 30s default timeout
 - `oneshot::channel` - Per-request response channel
-- `mpsc::Sender::send` - Async send to qdrant thread
+- `mpsc::Sender::send` - Async send to rro thread
 
 ---
 
@@ -130,14 +130,14 @@ async fn send_request_with_timeout(&self, msg, timeout) -> Result<...> {
 use tokio::sync::oneshot;
 
 #[derive(Error, Debug)]
-pub enum QdrantError {
+pub enum RROError {
     #[error("Response channel closed: {0}")]
     ResponseRecv(#[from] oneshot::error::RecvError),
     
     #[error("Request timed out after {0:?}")]
     Timeout(Duration),
     
-    #[error("Qdrant instance is shutting down")]
+    #[error("RRO instance is shutting down")]
     ChannelClosed,
 }
 ```
@@ -165,7 +165,7 @@ pub enum QdrantError {
                    mpsc::Receiver (rx.recv().await)
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Qdrant Thread                               │
+│                      RRO Thread                               │
 │                                                                  │
 │   rt.block_on(async {                                           │
 │       while let Some((msg, resp_sender)) = rx.recv().await {    │
@@ -198,10 +198,10 @@ pub enum QdrantError {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Embedded Qdrant                             │
+│                      Embedded RRO                             │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │               Qdrant Thread (std::thread)                │    │
+│  │               RRO Thread (std::thread)                │    │
 │  │                                                          │    │
 │  │  ┌────────────────┐ ┌────────────────┐ ┌──────────────┐ │    │
 │  │  │ search_runtime │ │ update_runtime │ │general_runtime│ │    │
@@ -218,7 +218,7 @@ pub enum QdrantError {
 │                              │ mpsc channel                      │
 │                              │                                   │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    QdrantClient                           │   │
+│  │                    RroClient                           │   │
 │  │              (your async code calls here)                 │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
@@ -230,7 +230,7 @@ pub enum QdrantError {
 
 | Constant | Location | Value | Purpose |
 |----------|----------|-------|---------|
-| `QDRANT_CHANNEL_BUFFER` | instance.rs:21 | 1024 | mpsc channel capacity |
+| `RRO_CHANNEL_BUFFER` | instance.rs:21 | 1024 | mpsc channel capacity |
 | `SHUTDOWN_TIMEOUT` | client.rs:27 | 30 seconds | Max wait for graceful shutdown |
 | Default request timeout | client.rs | 30 seconds | Per-request timeout |
 | Health check timeout | client.rs:75 | 5 seconds | Quick health probe |
@@ -241,18 +241,18 @@ pub enum QdrantError {
 
 When adding dashboard/Tauri integration, you'll interface through:
 
-1. **QdrantClient** - Already async-ready for Tauri commands
-2. **Existing methods** - All return `Result<T, QdrantError>`
+1. **RroClient** - Already async-ready for Tauri commands
+2. **Existing methods** - All return `Result<T, RROError>`
 3. **No additional Tokio setup** - Tauri has its own async runtime
 
 ```rust
 // Tauri command example
 #[tauri::command]
-async fn list_collections(state: State<'_, Arc<QdrantClient>>) -> Result<Vec<String>, String> {
+async fn list_collections(state: State<'_, Arc<RroClient>>) -> Result<Vec<String>, String> {
     state.list_collections()
         .await
         .map_err(|e| e.to_string())
 }
 ```
 
-The qdrant-lib is already async-first. Tauri integration is straightforward.
+The rro-lib is already async-first. Tauri integration is straightforward.
