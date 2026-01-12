@@ -14,6 +14,7 @@ use collection::operations::{
     },
     vector_ops::DeleteVectors,
 };
+use storage::content_manager::errors::StorageError;
 use segment::types::Filter;
 use std::{mem::ManuallyDrop, thread, time::{Duration, Instant}};
 use storage::content_manager::collection_meta_ops::{CreateCollection, UpdateCollection};
@@ -134,6 +135,7 @@ impl QdrantClient {
         match send_request(&self.tx, CollectionRequest::Get(name.into()).into()).await {
             Ok(QdrantResponse::Collection(CollectionResponse::Get(v))) => Ok(Some(v)),
             Err(QdrantError::Collection(CollectionError::NotFound { .. })) => Ok(None),
+            Err(QdrantError::Storage(StorageError::NotFound { .. })) => Ok(None),
             Err(e) => Err(e),
             res => Err(QdrantError::unexpected("expected response", res)),
         }
